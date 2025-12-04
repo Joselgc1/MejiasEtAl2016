@@ -15,7 +15,10 @@ Python/*pckl
 Python/*pyc
 Python/debug_neuroML
 Python/intralaminar
-Python/interlaminar
+Python/interlaminar_a
+Python/interlaminar_b
+Python/interlaminar_c
+Python/interareal
 
 NeuroML2/LEMS_SimExample.xml
 NeuroML2/LEMS_SimMejiasNetwork.xml
