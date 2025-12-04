@@ -254,36 +254,35 @@ if __name__ == "__main__":
 
         # Number of areas
         Nareas = 2
+        areas = ["V1", "V4"]
+
+        # Statistical runs
         nstats = 10
+
+        # Frequency ranges
+        minfreq_l23 = 30  # Gamma
+        minfreq_l56 = 4   # Alpha
 
         # Load network config
         tau, sig, J, Iext, Ibgk = get_network_configuration('interareal', noconns=False)
 
         # Interareal connectivity
-        W = build_interareal_W()
+        W = build_interareal_W(Nareas)
 
         # Stimulus intensity as per paper: I=15
         stim_intensity = 15
 
         # ============================================
-        # CONDITION 1: Stimulate V1, Record V4
-        # (Figure 4, panels A-B-C)
-        # Paper: "background current to excitatory populations in 
-        #         supragranular (I=2) and infragranular (I=4) layers"
+        # Stimulate V1, Record V4
         # ============================================
-        print('    Condition 1: Stimulate V1, Record V4 (Fig 4A-C)')
-        
-        # Background currents for condition 1: I=2 for L2E, I=4 for L5E (both areas)
-        # pops: 0=L2E, 1=L2I, 2=L5E, 3=L5I
-        Ibgk_cond1 = np.array([[2, 2],   # L2E: I=2
-                               [0, 0],   # L2I: no background
-                               [4, 4],   # L5E: I=4
-                               [0, 0]])  # L5I: no background
+        print('    Stimulate V1, Record V4 (Fig 4A-C)')
+
+        Iexts_V1 = np.array([2, 0, 4, 0])
         
         rate_rest_v1, rate_stim_v1 = interareal_simulation(
             t, dt, tstop,
             J, W, tau,
-            Iext, Ibgk_cond1, sig,
+            Iexts_V1, Ibgk, sig,
             args.sigmaoverride,
             nstats=nstats,
             stim_area='V1',
@@ -293,14 +292,14 @@ if __name__ == "__main__":
         px20_v1, px2_v1, px50_v1, px5_v1, fx2_v1, pgamma_v1, palpha_v1 = interareal_analysis(
             rate_rest_v1, rate_stim_v1,
             transient, dt,
-            minfreq_l23=20,
-            minfreq_l56=5,
-            nareas=2,
+            minfreq_l23=minfreq_l23,
+            minfreq_l56=minfreq_l56,
+            nareas=Nareas,
             stats=nstats
         )
 
         interareal_plt(
-            areas=["V1", "V4"],
+            areas=areas,
             px20=px20_v1, px2=px2_v1,
             px50=px50_v1, px5=px5_v1,
             fx2=fx2_v1,
@@ -311,22 +310,16 @@ if __name__ == "__main__":
         print('    Saved: interareal/stimulate_V1_*.png')
 
         # ============================================
-        # CONDITION 2: Stimulate V4, Record V1
-        # (Figure 4, panels D-E-F)
-        # Paper: "background current of I=1 to all excitatory areas"
+        # Stimulate V4, Record V1
         # ============================================
-        print('    Condition 2: Stimulate V4, Record V1 (Fig 4D-F)')
-        
-        # Background currents for condition 2: I=1 for all excitatory pops (both areas)
-        Ibgk_cond2 = np.array([[1, 1],   # L2E: I=1
-                               [0, 0],   # L2I: no background
-                               [1, 1],   # L5E: I=1
-                               [0, 0]])  # L5I: no background
+        print('    Stimulate V4, Record V1 (Fig 4D-F)')
+
+        Iexts_V4 = np.array([1, 0, 1, 0])
         
         rate_rest_v4, rate_stim_v4 = interareal_simulation(
             t, dt, tstop,
             J, W, tau,
-            Iext, Ibgk_cond2, sig,
+            Iexts_V4, Ibgk, sig,
             args.sigmaoverride,
             nstats=nstats,
             stim_area='V4',
@@ -336,14 +329,14 @@ if __name__ == "__main__":
         px20_v4, px2_v4, px50_v4, px5_v4, fx2_v4, pgamma_v4, palpha_v4 = interareal_analysis(
             rate_rest_v4, rate_stim_v4,
             transient, dt,
-            minfreq_l23=20,
-            minfreq_l56=5,
-            nareas=2,
+            minfreq_l23=minfreq_l23,
+            minfreq_l56=minfreq_l56,
+            nareas=Nareas,
             stats=nstats
         )
 
         interareal_plt(
-            areas=["V1", "V4"],
+            areas=areas,
             px20=px20_v4, px2=px2_v4,
             px50=px50_v4, px5=px5_v4,
             fx2=fx2_v4,

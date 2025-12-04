@@ -99,12 +99,7 @@ def get_network_configuration(
         J_2e = 1; J_2i = 0
         J_5e = 0; J_5i = 0.75
 
-        # External input at REST is 0; stimulus is applied separately in interareal_simulation
-        # Background current (Ibgk) provides baseline activity as per paper:
-        # "background current to excitatory populations in supragranular (I=2) 
-        #  and infragranular (I=4) layers in both V1 and V4"
-        Iexts = np.zeros((4, 2))
-        # Iexts = 15 * np.array([[1, 0], [0, 0], [1, 0], [0, 0]])
+        Iexts = np.array([8, 0, 8, 0])
 
     else:
         raise Exception('This type of analysis is not implemented')
@@ -123,10 +118,7 @@ def get_network_configuration(
                   [J_2e, 0,   wee, wie],
                   [J_2i, 0,   wei, wii]])
 
-    if analysis_type == 'interareal':
-        Ibgk = 2 * np.array([[1, 1], [1, 1], [2, 2], [1, 1]])
-    else:
-        Ibgk = np.zeros((J.shape[0]))
+    Ibgk = np.zeros((J.shape[0]))
 
     return tau, sig, J, Iexts, Ibgk
 
