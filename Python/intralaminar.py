@@ -3,12 +3,64 @@ import numpy as np
 import pickle
 from scipy import signal
 import matplotlib.pylab as plt
+from matplotlib.ticker import ScalarFormatter
 
 from calculate_rate import calculate_rate
 from helper_functions import calculate_periodogram, compress_data, plt_filled_std, matlab_smooth
 
+def intralaminar_simulation(
+    analysis, 
+    layer, 
+    Iexts, 
+    Ibgk, 
+    nruns, 
+    t, 
+    dt, 
+    tstop,
+    J, 
+    tau, 
+    sig, 
+    noise, 
+    Nareas):
 
-def intralaminar_analysis(simulation, Iexts, nruns, layer='L23', dt=2e-04, transient=5):
+    simulation = {}
+    for Iext in Iexts:
+        simulation[Iext] = {}
+        # Input vector for the excitatory and inhibitory populations
+        # Meaning:
+        # L23 excitatory gets stimulus
+        # L23 inhibitory does NOT
+        # L5 excitatory gets stimulus
+        # L5 inhibitory does NOT
+        Iext_a = np.array([Iext, 0, Iext, 0])
+
+        # run each combination of external input multiple times an take the average PSD
+        for nrun in range(nruns):
+
+            simulation[Iext][nrun] = {}
+            rate = calculate_rate(t, dt, tstop, J, tau, sig, Iext_a, Ibgk, noise, Nareas)
+
+            # Note: Save only the excitatory and inhibitory signal from L2/3.
+            # For compatibility with NeuroML/LEMS transform the results into a row matrix
+            simulation[Iext][nrun]['L23_E/0/L23_E/r'] = rate[0, :].reshape(-1)
+            simulation[Iext][nrun]['L23_I/0/L23_I/r'] = rate[1, :].reshape(-1)
+            simulation[Iext][nrun]['L5_E/0/L5_E/r'] = rate[2, :].reshape(-1)
+            simulation[Iext][nrun]['L5_I/0/L5_I/r'] = rate[3, :].reshape(-1)
+
+
+    picklename = os.path.join(analysis, layer + '_simulation.pckl')
+    with open(picklename, 'wb') as file1:
+        pickle.dump(simulation, file1)
+    print('    Done Simulation!')
+    return simulation
+
+def intralaminar_analysis(
+    simulation, 
+    Iexts, 
+    nruns, 
+    layer='L23', 
+    dt=2e-04, 
+    transient=5):
     """
     Calculates the main intralaminar analysis and dumps a pickle containing the periodogram of the analysis
     Inputs
@@ -17,8 +69,9 @@ def intralaminar_analysis(simulation, Iexts, nruns, layer='L23', dt=2e-04, trans
         nruns: number of simulations analysed for every Iext
         layer: Layer under analysis
         dt: time step of the simulation
-        transient:
-
+        transient: transient time of the simulation
+        Returns:
+            psd_dic: dictionary containing the periodogram of the analysis
     """
 
     psd_dic = {}
@@ -45,6 +98,7 @@ def intralaminar_analysis(simulation, Iexts, nruns, layer='L23', dt=2e-04, trans
             pxx = matlab_smooth(pxx_bin, window_size)
 
             psd_dic[Iext][nrun]['pxx'] = pxx
+
         # take the mean and std over the different runs
         psd_dic[Iext]['mean_pxx'] = np.mean([psd_dic[Iext][i]['pxx'] for i in range(nruns)], axis=0)
         psd_dic[Iext]['std_pxx'] = np.std([psd_dic[Iext][i]['pxx'] for i in range(nruns)], axis=0)
@@ -55,7 +109,101 @@ def intralaminar_analysis(simulation, Iexts, nruns, layer='L23', dt=2e-04, trans
     print('    Done Analysis!')
     return psd_dic
 
+def intralaminar_peak_analysis(
+    simulation, 
+    Iexts, 
+    nruns, 
+    layer='L23', 
+    dt=2e-4, 
+    transient=5):
 
+    # store results (mean + std)
+    results = {
+        'L23': {
+            'Iext': [], 
+            'peak_power_mean': [], 
+            'peak_power_std': [],
+            'peak_freq_mean': [],  
+            'peak_freq_std': []
+        },
+        'L5': {
+            'Iext': [], 
+            'peak_power_mean': [], 
+            'peak_power_std': [],
+            'peak_freq_mean': [],  
+            'peak_freq_std': []
+        }
+    }
+
+    # baseline_L23 = None
+    # baseline_L5  = None
+    # if 0 in Iexts:
+    #     all_pxx_L23_0 = []
+    #     all_pxx_L5_0  = []
+    #     for nrun in range(nruns):
+    #         r23 = simulation[0][nrun]['L23_E/0/L23_E/r']
+    #         r5  = simulation[0][nrun]['L5_E/0/L5_E/r']
+    #         pxx23, fxx = calculate_periodogram(r23, transient, dt)
+    #         pxx5,  _   = calculate_periodogram(r5, transient, dt)
+    #         all_pxx_L23_0.append(pxx23)
+    #         all_pxx_L5_0.append(pxx5)
+    #     baseline_L23 = np.mean(all_pxx_L23_0, axis=0)
+    #     baseline_L5  = np.mean(all_pxx_L5_0,  axis=0)
+
+    for Iext in Iexts:
+
+        L23_peak_powers = []
+        L23_peak_freqs  = []
+        L5_peak_powers  = []
+        L5_peak_freqs   = []
+
+        for nrun in range(nruns):
+            r23 = simulation[Iext][nrun]['L23_E/0/L23_E/r']
+            r5  = simulation[Iext][nrun]['L5_E/0/L5_E/r']
+            
+            # perform periodogram on restate.
+            pxx23, fxx = calculate_periodogram(r23, transient, dt)
+            pxx5,  _   = calculate_periodogram(r5, transient, dt)
+
+            # # subtract the baseline from the periodogram
+            # if baseline_L23 is not None:
+            #     pxx23 = pxx23 - baseline_L23
+            #     pxx5  = pxx5  - baseline_L5
+
+            # find the mask for the gamma and alpha bands
+            gamma_mask = (fxx >= 30) & (fxx <= 80)
+            alpha_mask = (fxx >= 5) & (fxx <= 30)
+
+            # get the power and frequency of the gamma and alpha peaks
+            gamma_pxx = pxx23[gamma_mask]
+            gamma_f   = fxx[gamma_mask]
+            alpha_pxx = pxx5[alpha_mask]
+            alpha_f   = fxx[alpha_mask]
+
+            # find the index of the gamma and alpha peaks
+            idx_g = np.argmax(gamma_pxx)
+            idx_a = np.argmax(alpha_pxx)
+
+            # append the power and frequency of the gamma and alpha peaks
+            L23_peak_powers.append(gamma_pxx[idx_g])
+            L23_peak_freqs.append(gamma_f[idx_g])
+            L5_peak_powers.append(alpha_pxx[idx_a])
+            L5_peak_freqs.append(alpha_f[idx_a])
+
+        # append means and stds
+        results['L23']['Iext'].append(Iext)
+        results['L23']['peak_power_mean'].append(np.mean(L23_peak_powers))
+        results['L23']['peak_power_std'].append(np.std(L23_peak_powers))
+        results['L23']['peak_freq_mean'].append(np.mean(L23_peak_freqs))
+        results['L23']['peak_freq_std'].append(np.std(L23_peak_freqs))
+
+        results['L5']['Iext'].append(Iext)
+        results['L5']['peak_power_mean'].append(np.mean(L5_peak_powers))
+        results['L5']['peak_power_std'].append(np.std(L5_peak_powers))
+        results['L5']['peak_freq_mean'].append(np.mean(L5_peak_freqs))
+        results['L5']['peak_freq_std'].append(np.std(L5_peak_freqs))
+
+    return results
 
 def intralaminar_plt(psd_dic):
     # select only the first time points until fxx < 100
@@ -91,30 +239,51 @@ def intralaminar_plt(psd_dic):
     plt.xlabel('Frequency(Hz)')
     plt.ylabel('Power (resp. rest)')
     plt.legend()
+
+    formatter = ScalarFormatter(useMathText=True)
+    formatter.set_powerlimits((-3, -3))
+    ax.yaxis.set_major_formatter(formatter)
+
     if not os.path.exists('intralaminar'):
         os.makedirs('intralaminar')
-    plt.savefig('intralaminar/intralaminar.png')
 
+    plt.savefig('intralaminar/intralaminar_2B.png')
 
-def intralaminar_simulation(analysis, layer, Iexts, Ibgk, nruns, t, dt, tstop,
-                            J, tau, sig, noise, Nareas):
-    simulation = {}
-    for Iext in Iexts:
-        simulation[Iext] = {}
-        Iext_a = np.array([Iext, 0, Iext, 0])
-        # run each combination of external input multiple times an take the average PSD
-        for nrun in range(nruns):
+def intralaminar_peak_plt(results):
+    Iexts = np.array(results['L23']['Iext'])
 
-            simulation[Iext][nrun] = {}
-            rate = calculate_rate(t, dt, tstop, J, tau, sig, Iext_a, Ibgk, noise, Nareas)
+    alpha = 0.3
+    fig, axs = plt.subplots(2, 2, figsize=(8,6), sharex='col')
 
-            # Note: Save only the excitatory and inhibitory signal from L2/3.
-            # For compatibility with NeuroML/LEMS transform the results into a row matrix
-            simulation[Iext][nrun]['L23_E/0/L23_E/r'] = rate[0, :].reshape(-1)
-            simulation[Iext][nrun]['L23_I/0/L23_I/r'] = rate[1, :].reshape(-1)
+    # ----- L23 POWER -----
+    mean = np.array(results['L23']['peak_power_mean'])
+    std  = np.array(results['L23']['peak_power_std'])
+    axs[0,0].plot(Iexts, mean, color='tab:green')
+    axs[0,0].fill_between(Iexts, mean-std, mean+std, alpha=alpha, color='tab:green')
+    axs[0,0].set_ylabel('Gamma peak power (L2/3)')
 
-    picklename = os.path.join(analysis, layer + '_simulation.pckl')
-    with open(picklename, 'wb') as file1:
-        pickle.dump(simulation, file1)
-    print('    Done Simulation!')
-    return simulation
+    # ----- L23 FREQ -----
+    mean = np.array(results['L23']['peak_freq_mean'])
+    std  = np.array(results['L23']['peak_freq_std'])
+    axs[0,1].plot(Iexts, mean, color='tab:cyan')
+    axs[0,1].fill_between(Iexts, mean-std, mean+std, alpha=alpha, color='tab:cyan')
+    axs[0,1].set_ylabel('Gamma peak freq (Hz)')
+
+    # ----- L5 POWER -----
+    mean = np.array(results['L5']['peak_power_mean'])
+    std  = np.array(results['L5']['peak_power_std'])
+    axs[1,0].plot(Iexts, mean, color='tab:orange')
+    axs[1,0].fill_between(Iexts, mean-std, mean+std, alpha=alpha, color='tab:orange')
+    axs[1,0].set_xlabel('Input to E population')
+    axs[1,0].set_ylabel('Alpha peak power (L5)')
+
+    # ----- L5 FREQ -----
+    mean = np.array(results['L5']['peak_freq_mean'])
+    std  = np.array(results['L5']['peak_freq_std'])
+    axs[1,1].plot(Iexts, mean, color='gold')
+    axs[1,1].fill_between(Iexts, mean-std, mean+std, alpha=alpha, color='gold')
+    axs[1,1].set_xlabel('Input to E population')
+    axs[1,1].set_ylabel('Alpha peak freq (Hz)')
+
+    plt.tight_layout()
+    plt.savefig('intralaminar/intralaminar_2C.png')

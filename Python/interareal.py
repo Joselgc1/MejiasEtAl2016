@@ -1,8 +1,124 @@
 import numpy as np
+from numpy.random import normal
 from scipy.stats import ttest_ind
 import matplotlib.pylab as plt
 
+from calculate_rate import calculate_rate
 from helper_functions import calculate_periodogram, find_peak_frequency, matlab_smooth, plt_filled_std
+
+
+def build_interareal_W():
+    # Interareal connectivity matrix
+    # areas: 0 = V1, 1 = V4
+    # pops:  0 = L2E, 1 = L2I, 2 = L5E, 3 = L5I
+
+    J_FF1 = 1.0
+    J_FB1, J_FB2, J_FB3, J_FB4 = 0.1, 0.5, 0.9, 0.5
+
+    W = np.zeros((2, 2, 4, 4))
+
+    # Feedforward: V1 (area 0) → V4 (area 1)
+    # from V1 L2E (pop 0) to V4 L2E (pop 0)
+    W[1, 0, 0, 0] = J_FF1
+
+    # Feedback: V4 (area 1) → V1 (area 0), from V4 L5E (pop 2)
+    W[0, 1, 0, 2] = J_FB1   # to V1 L2E
+    W[0, 1, 1, 2] = J_FB2   # to V1 L2I
+    W[0, 1, 2, 2] = J_FB3   # to V1 L5E
+    W[0, 1, 3, 2] = J_FB4   # to V1 L5I
+
+    return W
+
+def interareal_simulation(
+    t, dt, tstop,
+    J, W, tau,
+    Iext, Ibgk, sig,
+    sigmaoverride,
+    nstats=10,
+    stim_area=None,
+    stim_intensity=None):
+    """
+    Simulates interareal dynamics for Rest and Stim conditions.
+    Output format is rate[pop, time, area, stat]
+    """
+
+    Nt = len(t)
+    Nareas = 2
+    Npops  = 4
+
+    rate_rest = np.zeros((Npops, Nt, Nareas, nstats))
+    rate_stim = np.zeros((Npops, Nt, Nareas, nstats))
+
+    for s in range(nstats):
+
+        # --------------------
+        # 1. REST
+        # --------------------
+        r = np.zeros((Npops, Nareas))
+        r_save = np.zeros((Npops, Nt, Nareas))
+
+        for ti in range(Nt):
+
+            noise = sig[:, None] * np.random.randn(Npops, Nareas)
+
+            for a in range(Nareas):
+                # Local intralaminar input
+                local = J @ r[:, a]
+
+                # Interareal input
+                inter = np.zeros(Npops)
+                for b in range(Nareas):
+                    if b != a:
+                        inter += W[a, b] @ r[:, b]
+
+                I = Ibgk[:, a] + Iext[:, a]
+
+                dr = (-r[:, a] + np.tanh(local + inter + I + noise[:, a])) / tau
+                r[:, a] += dt * dr
+
+                r_save[:, ti, a] = r[:, a]
+
+        rate_rest[:, :, :, s] = r_save
+
+
+        # --------------------
+        # 2. STIM
+        # --------------------
+        r = np.zeros((Npops, Nareas))
+        r_save = np.zeros((Npops, Nt, Nareas))
+
+        Iext_stim = Iext.copy()
+        # Apply stimulus only to excitatory populations (L2E=0, L5E=2)
+        # as per paper: "inject current at supra- and infragranular excitatory populations"
+        if stim_area == "V1":
+            Iext_stim[0, 0] += stim_intensity  # L2E in V1
+            Iext_stim[2, 0] += stim_intensity  # L5E in V1
+        elif stim_area == "V4":
+            Iext_stim[0, 1] += stim_intensity  # L2E in V4
+            Iext_stim[2, 1] += stim_intensity  # L5E in V4
+
+        for ti in range(Nt):
+
+            noise = sig[:, None] * np.random.randn(Npops, Nareas)
+
+            for a in range(Nareas):
+                local = J @ r[:, a]
+
+                inter = np.zeros(Npops)
+                for b in range(Nareas):
+                    if b != a:
+                        inter += W[a, b] @ r[:, b]
+
+                I = Ibgk[:, a] + Iext_stim[:, a]
+
+                dr = (-r[:, a] + np.tanh(local + inter + I + noise[:, a])) / tau
+                r[:, a] += dt * dr
+
+                r_save[:, ti, a] = r[:, a]
+
+        rate_stim[:, :, :, s] = r_save
+
+    return rate_rest, rate_stim
 
 
 def trialstat(rate, transient, dt, minfreq_l23, minfreq_l56, nareas, stats):
@@ -37,14 +153,15 @@ def trialstat(rate, transient, dt, minfreq_l23, minfreq_l56, nareas, stats):
         k = 0
         for area in range(nareas):
             # Calculate power spectrum for the excitatory population from layer L23
-            pxx2, fxx2 = calculate_periodogram(rate[area * 4, :, 0, stat], transient, dt)
+            # rate shape: (Npops, Nt, Nareas, nstats) where pop 0 = L2E, pop 2 = L5E
+            pxx2, fxx2 = calculate_periodogram(rate[0, :, area, stat], transient, dt)
 
             # concatenate the results
             px2[:, area, stat] = pxx2
             fx2[:, area, stat] = fxx2
 
             frequency_l23, amplitudeA_l23, _, _ = \
-                find_peak_frequency(fxx2, pxx2, minfreq_l23, rate[area * 4, :, 0, stat])
+                find_peak_frequency(fxx2, pxx2, minfreq_l23, rate[0, :, area, stat])
 
             powerpeak[k, stat] = amplitudeA_l23
             freqpeak[k, stat] = frequency_l23
@@ -52,13 +169,13 @@ def trialstat(rate, transient, dt, minfreq_l23, minfreq_l56, nareas, stats):
             k += 1
 
             # Calculate power spectrum for the excitatory population from layer L56
-            pxx5, fxx5 = calculate_periodogram(rate[area * 4 + 2, :, 0, stat], transient, dt)
+            pxx5, fxx5 = calculate_periodogram(rate[2, :, area, stat], transient, dt)
             # concatenate the results
             px5[:, area, stat] = pxx5
             fx5[:, area, stat] = fxx5
 
             frequency_l56, amplitudeA_l56, _, _ = \
-                find_peak_frequency(fxx5, pxx5, minfreq_l56, rate[area * 4 + 2, :, 0, stat])
+                find_peak_frequency(fxx5, pxx5, minfreq_l56, rate[2, :, area, stat])
 
             powerpeak[k, stat] = amplitudeA_l56
             freqpeak[k, stat] = frequency_l56
