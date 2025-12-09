@@ -99,6 +99,13 @@ def get_network_configuration(
         J_2e = 1; J_2i = 0
         J_5e = 0; J_5i = 0.75
 
+        Iexts = np.array([0, 0, 0, 0])
+
+    elif analysis_type == 'largescale':
+        # define interareal synaptic coupling strengths
+        J_2e = 1; J_2i = 0
+        J_5e = 0; J_5i = 0.75
+
         Iexts = np.array([8, 0, 8, 0])
 
     else:

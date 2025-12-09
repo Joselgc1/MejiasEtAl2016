@@ -358,29 +358,30 @@ def plot_interlaminar_power_spectrum(
     pxx_uncoupled_l56_bin, pxx_coupled_l56_bin,
     analysis):
 
-    # Plot the results for L23
-    plt.figure()
-    plt.loglog(fxx_uncoupled_l23_bin, pxx_uncoupled_l23_bin, 'k', label='no coupling')
-    plt.loglog(fxx_coupled_l23_bin, pxx_coupled_l23_bin, 'g', label='with coupling')
-    plt.xlabel('Frequency (Hz)')
-    plt.ylabel('L2/3 Power')
-    plt.legend()
-    plt.xlim([1, 100])
-    plt.ylim([10**-4, 10**-2])
-    if not os.path.exists('interlaminar'):
-        os.makedirs('interlaminar')
-    plt.savefig(os.path.join(analysis, 'spectrogram_l23.png'))
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(5, 7))
 
-    # Plot the results for L56
-    plt.figure()
-    plt.loglog(fxx_uncoupled_l56_bin, pxx_uncoupled_l56_bin, color='k', label='no coupling')
-    plt.loglog(fxx_coupled_l56_bin, pxx_coupled_l56_bin, color='#FF7F50', label='with coupling')
-    plt.xlabel('Frequency (Hz)')
-    plt.ylabel('L5/6 Power')
-    plt.legend()
-    plt.xlim([1, 100])
-    plt.ylim([10**-5, 10**-0])
-    plt.savefig(os.path.join(analysis, 'spectrogram_l56.png'))
+    # Plot the results for L23 (top panel)
+    ax1.loglog(fxx_uncoupled_l23_bin, pxx_uncoupled_l23_bin, 'k', label='Uncoupled')
+    ax1.loglog(fxx_coupled_l23_bin, pxx_coupled_l23_bin, 'g', label='Coupled')
+    ax1.set_xlabel('Frequency (Hz)')
+    ax1.set_ylabel('L2/3 power')
+    ax1.legend(frameon=False)
+    ax1.set_xlim([1, 100])
+    ax1.set_ylim([10**-4, 10**-2])
+
+    # Plot the results for L56 (bottom panel)
+    ax2.loglog(fxx_uncoupled_l56_bin, pxx_uncoupled_l56_bin, 'k', label='Uncoupled')
+    ax2.loglog(fxx_coupled_l56_bin, pxx_coupled_l56_bin, color='#FF7F00', label='Coupled')
+    ax2.set_xlabel('Frequency (Hz)')
+    ax2.set_ylabel('L5/6 power')
+    ax2.legend(frameon=False)
+    ax2.set_xlim([1, 100])
+    ax2.set_ylim([10**-5, 10**0])
+
+    plt.tight_layout()
+    if not os.path.exists(analysis):
+        os.makedirs(analysis)
+    plt.savefig(os.path.join(analysis, 'power_spectrum.png'), dpi=150, bbox_inches='tight')
 
 def plot_activity_traces(dt, segment5, segindex, analysis):
     # calculate the peak-centered alpha wave by averaging
