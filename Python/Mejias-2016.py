@@ -5,6 +5,7 @@ import numpy as np
 import argparse
 import matplotlib.pylab as plt
 import pickle
+from scipy.io import loadmat
 
 # set random set
 np.random.RandomState(seed=42)
@@ -15,6 +16,12 @@ from interlaminar import interlaminar_simulation, interlaminar_activity_analysis
                          plot_interlaminar_power_spectrum, plot_power_spectrum_neurodsp, \
                         interlaminar_3C_analysis, interlaminar_3C_plot
 from interareal import build_interareal_W, interareal_simulation, interareal_analysis, interareal_plt
+from largescale import (
+    get_macaque_connectivity, get_roi_subset, get_largescale_parameters,
+    build_largescale_connectivity, run_largescale_trials,
+    largescale_granger_analysis, largescale_hierarchy_analysis,
+    largescale_power_analysis, largescale_plt
+)
 
 from helper_functions import firing_rate_analysis, get_network_configuration
 
@@ -277,12 +284,12 @@ if __name__ == "__main__":
         # ============================================
         print('    Stimulate V1, Record V4 (Fig 4A-C)')
 
-        Iexts_V1 = np.array([2, 0, 4, 0])
+        Ibgk_V1 = np.array([2, 0, 4, 0])
         
         rate_rest_v1, rate_stim_v1 = interareal_simulation(
             t, dt, tstop,
             J, W, tau,
-            Iexts_V1, Ibgk, sig,
+            Iext, Ibgk_V1, sig,
             args.sigmaoverride,
             nstats=nstats,
             stim_area='V1',
@@ -314,12 +321,12 @@ if __name__ == "__main__":
         # ============================================
         print('    Stimulate V4, Record V1 (Fig 4D-F)')
 
-        Iexts_V4 = np.array([1, 0, 1, 0])
+        Ibgk_V4 = np.array([1, 0, 1, 0])
         
         rate_rest_v4, rate_stim_v4 = interareal_simulation(
             t, dt, tstop,
             J, W, tau,
-            Iexts_V4, Ibgk, sig,
+            Iext, Ibgk_V4, sig,
             args.sigmaoverride,
             nstats=nstats,
             stim_area='V4',
@@ -347,6 +354,115 @@ if __name__ == "__main__":
         print('    Saved: interareal/stimulate_V4_*.png')
         
         print('Interareal analysis completed.')
+
+    if args.analysis == 'largescale':
+        print('-----------------------')
+        print('Large-scale Cortical Network Analysis (Figure 6)')
+        print('-----------------------')
+
+        # Time parameters
+        dt = args.dt
+        triallength = 200  # seconds
+        transient = 10
+
+        # Number of areas (30 for full network)
+        Nareas = 30
+
+        # Number of statistical trials
+        ntrials = 10 
+
+        # External input parameters (as per paper)
+        Iexternal = 8  # Input to V1 L2/3
+        thalamic_input = 6  # Background to all areas
+
+        # ROI subset for analysis (Kennedy-Fries Neuron 2015 selection)
+        use_roi_subset = True
+
+        print(f'    Time step: {dt}s')
+        print(f'    Trial length: {triallength}s')
+        print(f'    Transient: {transient}s')
+        print(f'    Number of areas: {Nareas}')
+        print(f'    Number of trials: {ntrials}')
+        print(f'    External input to V1: {Iexternal}')
+        print(f'    Thalamic background: {thalamic_input}')
+
+        # Load connectivity data
+        print('\n    Loading connectivity data...')
+        area_names, fln_mat, sln_mat, wiring = get_macaque_connectivity()
+        area_names = area_names[:Nareas]
+        roi_names, roi_indices = get_roi_subset(area_names)
+        print(f'    ROI subset: {roi_names}')
+
+        # Get network parameters
+        par = get_largescale_parameters(Nareas, dt)
+
+        # Build connectivity matrices
+        print('    Building connectivity matrices...')
+        Wff, Wfb, delays, s = build_largescale_connectivity(fln_mat, sln_mat, wiring, par)
+
+        # Set up external input (matching MATLAB)
+        Iext = np.zeros((4, Nareas))
+        Iext[[0, 2], :] = thalamic_input  # Background to L2/3E and L5/6E
+        Iext[0, 0] += Iexternal  # Additional input to V1 L2/3E
+
+        # Check if simulation already exists
+        simulation_file = os.path.join(args.analysis, 'simulation.pckl')
+        if not os.path.isfile(simulation_file):
+            print(f'\n    Running {ntrials} trials (this may take a while)...')
+            X, X2, X5 = run_largescale_trials(
+                par, Wff, Wfb, delays, s, Iext,
+                triallength, transient, ntrials
+            )
+            # Save simulation
+            simulation = {'X': X, 'X2': X2, 'X5': X5, 'par': par}
+            with open(simulation_file, 'wb') as f:
+                pickle.dump(simulation, f)
+            print(f'    Saved simulation to: {simulation_file}')
+        else:
+            print(f'    Loading pre-saved simulation: {simulation_file}')
+            with open(simulation_file, 'rb') as f:
+                simulation = pickle.load(f)
+            X, X2, X5 = simulation['X'], simulation['X2'], simulation['X5']
+
+        # -------------------------------
+        #   Granger Causality Analysis
+        # -------------------------------
+        print('\n    Running Granger causality analysis...')
+        gc_results = largescale_granger_analysis(
+            X, par, roi_indices if use_roi_subset else None
+        )
+
+        # -------------------------------
+        #   Hierarchy Analysis
+        # -------------------------------
+        print('    Running hierarchy analysis...')
+        hierarchy_results = largescale_hierarchy_analysis(
+            gc_results['f_gc'], gc_results['freqs'],
+            sln_mat, roi_indices if use_roi_subset else None
+        )
+
+        # -------------------------------
+        #   Power Analysis
+        # -------------------------------
+        print('    Running power analysis...')
+        power_results = largescale_power_analysis(X2, X5, par)
+
+        # -------------------------------
+        #   Plot Results
+        # -------------------------------
+        print('\n    Generating plots...')
+        largescale_plt(
+            gc_results, hierarchy_results, power_results,
+            area_names, roi_names if use_roi_subset else area_names,
+            roi_indices if use_roi_subset else None,
+            args.analysis
+        )
+
+        # Print summary statistics
+        print('\n----- Summary Statistics -----')
+        print(f'mDAI-SLN correlation: r = {hierarchy_results["mdai_sln_rho"]:.3f}, p = {hierarchy_results["mdai_sln_pval"]:.2e}')
+        print(f'\nResults saved to {args.analysis}/')
+        print('Large-scale analysis completed.')
 
     if args.analysis == 'debug':
         print('-----------------------')
