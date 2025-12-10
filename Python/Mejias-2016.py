@@ -19,8 +19,8 @@ from interareal import build_interareal_W, interareal_simulation, interareal_ana
 from largescale import (
     get_macaque_connectivity, get_roi_subset, get_largescale_parameters,
     build_largescale_connectivity, run_largescale_trials,
-    largescale_granger_analysis, largescale_hierarchy_analysis,
-    largescale_power_analysis, largescale_plt
+    largescale_power_analysis, largescale_plt, 
+    apply_lesion, lesion_rate_analysis, lesion_power_analysis, lesion_plt
 )
 
 from helper_functions import firing_rate_analysis, get_network_configuration
@@ -357,12 +357,12 @@ if __name__ == "__main__":
 
     if args.analysis == 'largescale':
         print('-----------------------')
-        print('Large-scale Cortical Network Analysis (Figure 6)')
+        print('Large-scale Cortical Network Analysis')
         print('-----------------------')
 
         # Time parameters
         dt = args.dt
-        triallength = 200  # seconds
+        tstop = 200  # seconds
         transient = 10
 
         # Number of areas (30 for full network)
@@ -379,7 +379,7 @@ if __name__ == "__main__":
         use_roi_subset = True
 
         print(f'    Time step: {dt}s')
-        print(f'    Trial length: {triallength}s')
+        print(f'    Trial length: {tstop}s')
         print(f'    Transient: {transient}s')
         print(f'    Number of areas: {Nareas}')
         print(f'    Number of trials: {ntrials}')
@@ -400,7 +400,7 @@ if __name__ == "__main__":
         print('    Building connectivity matrices...')
         Wff, Wfb, delays, s = build_largescale_connectivity(fln_mat, sln_mat, wiring, par)
 
-        # Set up external input (matching MATLAB)
+        # Set up external input
         Iext = np.zeros((4, Nareas))
         Iext[[0, 2], :] = thalamic_input  # Background to L2/3E and L5/6E
         Iext[0, 0] += Iexternal  # Additional input to V1 L2/3E
@@ -409,10 +409,7 @@ if __name__ == "__main__":
         simulation_file = os.path.join(args.analysis, 'simulation.pckl')
         if not os.path.isfile(simulation_file):
             print(f'\n    Running {ntrials} trials (this may take a while)...')
-            X, X2, X5 = run_largescale_trials(
-                par, Wff, Wfb, delays, s, Iext,
-                triallength, transient, ntrials
-            )
+            X, X2, X5 = run_largescale_trials(par, Wff, Wfb, delays, s, Iext, tstop, transient, ntrials)
             # Save simulation
             simulation = {'X': X, 'X2': X2, 'X5': X5, 'par': par}
             with open(simulation_file, 'wb') as f:
@@ -425,23 +422,6 @@ if __name__ == "__main__":
             X, X2, X5 = simulation['X'], simulation['X2'], simulation['X5']
 
         # -------------------------------
-        #   Granger Causality Analysis
-        # -------------------------------
-        print('\n    Running Granger causality analysis...')
-        gc_results = largescale_granger_analysis(
-            X, par, roi_indices if use_roi_subset else None
-        )
-
-        # -------------------------------
-        #   Hierarchy Analysis
-        # -------------------------------
-        print('    Running hierarchy analysis...')
-        hierarchy_results = largescale_hierarchy_analysis(
-            gc_results['f_gc'], gc_results['freqs'],
-            sln_mat, roi_indices if use_roi_subset else None
-        )
-
-        # -------------------------------
         #   Power Analysis
         # -------------------------------
         print('    Running power analysis...')
@@ -451,18 +431,174 @@ if __name__ == "__main__":
         #   Plot Results
         # -------------------------------
         print('\n    Generating plots...')
-        largescale_plt(
-            gc_results, hierarchy_results, power_results,
-            area_names, roi_names if use_roi_subset else area_names,
-            roi_indices if use_roi_subset else None,
-            args.analysis
-        )
-
-        # Print summary statistics
-        print('\n----- Summary Statistics -----')
-        print(f'mDAI-SLN correlation: r = {hierarchy_results["mdai_sln_rho"]:.3f}, p = {hierarchy_results["mdai_sln_pval"]:.2e}')
-        print(f'\nResults saved to {args.analysis}/')
+        largescale_plt(power_results, area_names, roi_indices if use_roi_subset else None, args.analysis)
         print('Large-scale analysis completed.')
+
+    if args.analysis == 'lesion':
+        print('-----------------------')
+        print('Lesion Analysis (Stroke Simulation)')
+        print('-----------------------')
+        
+        # Time parameters
+        dt = args.dt
+        tstop = 200  # seconds
+        transient = 10
+
+        # Number of areas (30 for full network)
+        Nareas = 30
+
+        # Number of statistical trials
+        ntrials = 10 
+
+        # External input parameters (as per paper)
+        Iexternal = 8  # Input to V1 L2/3
+        thalamic_input = 6  # Background to all areas
+
+        # ROI subset for analysis (Kennedy-Fries Neuron 2015 selection)
+        use_roi_subset = True
+
+        # Lesion configuration
+        lesion_areas_names = ['V2', 'V4']  # Areas to lesion (by name)
+        lesion_type = 'complete'  # Type of lesion
+
+        print(f'    Time step: {dt}s')
+        print(f'    Trial length: {tstop}s')
+        print(f'    Transient: {transient}s')
+        print(f'    Number of areas: {Nareas}')
+        print(f'    Number of trials: {ntrials}')
+        print(f'    External input to V1: {Iexternal}')
+        print(f'    Thalamic background: {thalamic_input}')
+        print(f'    Lesion type: {lesion_type}')
+        print(f'    Lesioned areas: {", ".join(lesion_areas_names)}')
+        
+        # Load connectivity data
+        print('\n    Loading connectivity data...')
+        area_names, fln_mat, sln_mat, wiring = get_macaque_connectivity()
+        area_names = area_names[:Nareas]
+        roi_names, roi_indices = get_roi_subset(area_names)
+        print(f'    ROI subset: {roi_names}')
+        
+        # Convert lesion area names to indices
+        lesion_indices = [i for i, name in enumerate(area_names) if name in lesion_areas_names]
+        print(f'    Lesion indices: {lesion_indices}')
+
+        # Get network parameters
+        par = get_largescale_parameters(Nareas, dt)
+        
+        # Build connectivity matrices
+        print('    Building connectivity matrices...')
+        Wff, Wfb, delays, s = build_largescale_connectivity(fln_mat, sln_mat, wiring, par)
+        
+        # Set up external input
+        Iext = np.zeros((4, Nareas))
+        Iext[[0, 2], :] = thalamic_input  # Background to L2/3E and L5/6E
+        Iext[0, 0] += Iexternal  # Additional input to V1 L2/3E
+        
+        # -------------------------------
+        #   Baseline Simulation
+        # -------------------------------
+        # Check if simulation already exists
+        baseline_file = os.path.join(args.analysis, 'baseline_simulation.pckl')
+        if not os.path.isfile(baseline_file):
+            print(f'\n    Running baseline simulation ({ntrials} trials)...')
+            X_baseline, X2_baseline, X5_baseline = run_largescale_trials(par, Wff, Wfb, delays, s, Iext, tstop, transient, ntrials, clamp_mask=None)
+            # Save simulation
+            baseline_simulation = {'X': X_baseline, 'X2': X2_baseline, 'X5': X5_baseline, 'par': par}
+            with open(baseline_file, 'wb') as f:
+                pickle.dump(baseline_simulation, f)
+            print(f'    Saved baseline simulation to: {baseline_file}')
+        else:
+            print(f'    Loading pre-saved baseline simulation: {baseline_file}')
+            with open(baseline_file, 'rb') as f:
+                baseline_simulation = pickle.load(f)
+            X_baseline, X2_baseline, X5_baseline = baseline_simulation['X'], baseline_simulation['X2'], baseline_simulation['X5']
+        
+        # -------------------------------
+        #   Apply Lesion
+        # -------------------------------
+        print(f'\n    Applying {lesion_type} lesion to: {", ".join(lesion_areas_names)}')
+        Wff_lesion, Wfb_lesion, delays_lesion, s_lesion, Iext_lesion, clamp_mask = apply_lesion(
+            Wff, Wfb, delays, s, Iext, lesion_indices, lesion_type
+        )
+        
+        # -------------------------------
+        #   Lesioned Simulation
+        # -------------------------------
+        lesion_file = os.path.join(args.analysis, 'lesion_simulation.pckl')
+        if not os.path.isfile(lesion_file):
+            print(f'\n    Running lesioned simulation ({ntrials} trials)...')
+            X_lesion, X2_lesion, X5_lesion = run_largescale_trials(par, Wff_lesion, Wfb_lesion, delays_lesion, s_lesion, Iext_lesion, tstop, transient, ntrials, clamp_mask=clamp_mask)
+            lesion_sim = {
+                'X': X_lesion, 'X2': X2_lesion, 'X5': X5_lesion, 'par': par,
+                'lesion_indices': lesion_indices,
+                'lesion_names': lesion_areas_names,
+                'lesion_type': lesion_type
+            }
+            with open(lesion_file, 'wb') as f:
+                pickle.dump(lesion_sim, f)
+            print(f'    Saved lesioned simulation to: {lesion_file}')
+        else:
+            print(f'    Loading lesioned simulation from: {lesion_file}')
+            with open(lesion_file, 'rb') as f:
+                lesion_sim = pickle.load(f)
+            X_lesion, X2_lesion, X5_lesion = lesion_sim['X'], lesion_sim['X2'], lesion_sim['X5']
+        
+        # -------------------------------
+        #   Analysis: Firing Rates
+        # -------------------------------
+        print('\n    Analyzing firing rate changes...')
+        rate_results = lesion_rate_analysis(
+            X_baseline, X_lesion, area_names, lesion_indices
+        )
+        
+        # -------------------------------
+        #   Analysis: Oscillatory Power
+        # -------------------------------
+        print('    Running power analysis...')
+        power_results = largescale_power_analysis(X2_lesion, X5_lesion, par)
+        
+        print('    Analyzing oscillatory power changes...')
+        lesion_power_results = lesion_power_analysis(
+            X2_baseline, X5_baseline, X2_lesion, X5_lesion, par
+        )
+        
+        # -------------------------------
+        #   Plot Results
+        # -------------------------------
+        print('\n    Generating plots...')
+        largescale_plt(power_results, area_names, roi_indices if use_roi_subset else None, args.analysis)
+        lesion_plt(
+            rate_results, lesion_power_results,
+            full_area_names=area_names,
+            lesion_names=lesion_areas_names,
+            lesion_indices_full=lesion_indices,
+            output_dir=args.analysis,
+            roi_indices=roi_indices if use_roi_subset else None  # Use ROI subset for cleaner plots
+        )
+        
+        # -------------------------------
+        #   Summary Statistics
+        # -------------------------------
+        print('\n----- Summary Statistics -----')
+        print(f'Lesioned areas: {", ".join(lesion_areas_names)}')
+        print(f'\nFiring Rate Changes:')
+        
+        # Find most affected areas
+        sorted_indices = np.argsort(np.abs(rate_results['percent_change']))[::-1]
+        print(f'  Top 5 most affected areas:')
+        for i in sorted_indices[:5]:
+            if i not in lesion_indices:  # Don't report lesioned areas
+                sig_marker = '*' if rate_results['significant'][i] else ''
+                print(f'    {area_names[i]:6s}: {rate_results["percent_change"][i]:+6.2f}% {sig_marker}')
+        
+        print(f'\nOscillatory Power Changes:')
+        gamma_mean_change = np.mean(np.abs(lesion_power_results['gamma_change']))
+        alpha_mean_change = np.mean(np.abs(lesion_power_results['alpha_change']))
+        print(f'  Mean gamma power change: {gamma_mean_change:.2f}%')
+        print(f'  Mean alpha power change: {alpha_mean_change:.2f}%')
+        
+        print(f'\nResults saved to {args.analysis}/')
+        print('Lesion analysis completed.')
 
     if args.analysis == 'debug':
         print('-----------------------')
