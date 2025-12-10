@@ -43,7 +43,7 @@ def get_roi_subset(areas):
     These 8 areas: V1, V2, V4, DP, 8m, 8l, TEO, 7A
     """
     # Indices in the 30-area list
-    roi_names = ['V1', 'V2', 'V4', 'DP', '8m', '8l', 'TEO', '7A']
+    roi_names = ['V1', 'V2', 'V4', 'DP', 'MT', '8m', '8l', 'TEO', '7A', 'TEpd']
     roi_indices = [list(areas).index(str(name)) for name in roi_names]
     return roi_names, roi_indices
 
@@ -285,9 +285,7 @@ def largescale_simulation(par, Wff, Wfb, delays, s, Iext, tstop=200, transient=2
     return rate
 
 
-def run_largescale_trials(par, Wff, Wfb, delays, s, Iext, 
-                          tstop=200, transient=20, ntrials=30,
-                          clamp_mask=None, base_seed=42):
+def run_largescale_trials(par, Wff, Wfb, delays, s, Iext, tstop=200, transient=20, ntrials=30, clamp_mask=None, base_seed=42):
     """
     Run multiple trials of the large-scale simulation.
     
