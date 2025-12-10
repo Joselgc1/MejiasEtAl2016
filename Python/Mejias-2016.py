@@ -373,7 +373,10 @@ if __name__ == "__main__":
 
         # External input parameters (as per paper)
         Iexternal = 8  # Input to V1 L2/3
-        thalamic_input = 6  # Background to all areas
+        thalamic_input = 4  # Background to all areas
+        Iext = np.zeros((4, Nareas))
+        Iext[[0, 2], :] = thalamic_input  # Background to L2/3E and L5/6E
+        Iext[0, 0] += Iexternal  # Additional input to V1 L2/3E
 
         # ROI subset for analysis (Kennedy-Fries Neuron 2015 selection)
         use_roi_subset = True
@@ -399,11 +402,6 @@ if __name__ == "__main__":
         # Build connectivity matrices
         print('    Building connectivity matrices...')
         Wff, Wfb, delays, s = build_largescale_connectivity(fln_mat, sln_mat, wiring, par)
-
-        # Set up external input
-        Iext = np.zeros((4, Nareas))
-        Iext[[0, 2], :] = thalamic_input  # Background to L2/3E and L5/6E
-        Iext[0, 0] += Iexternal  # Additional input to V1 L2/3E
 
         # Check if simulation already exists
         simulation_file = os.path.join(args.analysis, 'simulation.pckl')
@@ -452,14 +450,17 @@ if __name__ == "__main__":
 
         # External input parameters (as per paper)
         Iexternal = 8  # Input to V1 L2/3
-        thalamic_input = 6  # Background to all areas
+        thalamic_input = 4  # Background to all areas
+        Iext = np.zeros((4, Nareas))
+        Iext[[0, 2], :] = thalamic_input  # Background to L2/3E and L5/6E
+        Iext[0, 0] += Iexternal  # Additional input to V1 L2/3E
 
         # ROI subset for analysis (Kennedy-Fries Neuron 2015 selection)
         use_roi_subset = True
 
         # Lesion configuration
-        lesion_areas_names = ['V2', 'V4']  # Areas to lesion (by name)
-        lesion_type = 'complete'  # Type of lesion
+        lesion_areas_names = ['8l', '7A', '46d']  # Areas to lesion (by name)
+        lesion_type = 'activity_only'  # Type of lesion
 
         print(f'    Time step: {dt}s')
         print(f'    Trial length: {tstop}s')
@@ -488,11 +489,6 @@ if __name__ == "__main__":
         # Build connectivity matrices
         print('    Building connectivity matrices...')
         Wff, Wfb, delays, s = build_largescale_connectivity(fln_mat, sln_mat, wiring, par)
-        
-        # Set up external input
-        Iext = np.zeros((4, Nareas))
-        Iext[[0, 2], :] = thalamic_input  # Background to L2/3E and L5/6E
-        Iext[0, 0] += Iexternal  # Additional input to V1 L2/3E
         
         # -------------------------------
         #   Baseline Simulation
