@@ -1,48 +1,159 @@
-## Mejias et al. 2016
+# Mejias et al. 2016 - Large-Scale Cortical Network Simulation
 
-[![Continuous build using OMV](https://github.com/OpenSourceBrain/MejiasEtAl2016/actions/workflows/omv-ci.yml/badge.svg)](https://github.com/OpenSourceBrain/MejiasEtAl2016/actions/workflows/omv-ci.yml) [![Non OMV based tests](https://github.com/OpenSourceBrain/MejiasEtAl2016/actions/workflows/non-omv.yml/badge.svg)](https://github.com/OpenSourceBrain/MejiasEtAl2016/actions/workflows/non-omv.yml)
+Overview of the main results of the simulation in Python. The methods used to analyse the simulation will be adapted to also analyse the results of the NeuroML2 simulation.
 
-Implementation in in Matlab, Python and in NeuroML2/LEMS of Jorge F. Mejias, John D. Murray, Henry Kennedy, and Xiao-Jing Wang, “Feedforward and Feedback Frequency-Dependent Interactions in a Large-Scale Laminar Network of the Primate Cortex.” [Science Advances](http://advances.sciencemag.org/content/2/11/e1601335), 2016 ([bioRxiv](https://doi.org/10.1101/065854)).
+## Data Organization
 
-### The model
-The model simulates the dynamics of a cortical laminar structure across multiple scales: (I) intralaminar, (II) interlaminar, (III) interareal, (IV) whole cortex. Interestingly, the authors show that while feedforward pathways are associated with gamma oscillations (30 - 70 Hz), feedback pathways are modulated by alpha/low beta oscillations (8 - 15 Hz).
+All simulation results and plots are now saved in the `data/` folder, organized by analysis type:
 
-<img src="https://raw.githubusercontent.com/OpenSourceBrain/MejiasEtAl2016/master/NeuroML2/img/Mejias-2016.png" width="500px"/>
-<sup><i>Interareal model (work in progress)</i></sup>
-<img src="https://raw.githubusercontent.com/OpenSourceBrain/MejiasEtAl2016/master/NeuroML2/img/interareal.png" width="500px"/>
-<sup><i>View of whole cortex model on Open Source Brain (work in progress)</i></sup>
-<img src="https://raw.githubusercontent.com/OpenSourceBrain/MejiasEtAl2016/master/NeuroML2/img/OSB1.png" width="500px"/>
+```
+data/
+├── intralaminar/
+├── interlaminar_a/
+├── interlaminar_b/
+├── interlaminar_c/
+├── interareal/
+├── largescale/
+└── lesion_<area_names>/    # e.g., lesion_V4, lesion_8l_7A_46d
+```
 
-> Note: This repo is a work in progress. So far this repository contains the implementation for the model dynamics at the intralaminar and the interlaminar level. At the moment we are working on the implementation of the interareal level.
+## Intralaminar Analysis
 
-### Simulation of the model
+This model considers the simulation of excitatory and inhibitory neurons of supra- and infragranular layers. Note that the excitatory and inhibitory populations of both layers are not connected. The parameters of the model were adjusted so that the layer 2/3 oscillates within the gamma (~40 Hz) and layer 5/6 falls within the alpha/low-beta range (~10-30 Hz).
 
-#### Matlab
-This folder contains the original model developed by Jorge Mejias and available on [ModelDB](https://senselab.med.yale.edu/ModelDB/showmodel.cshtml?model=249589&file=/Mejias2016/readme.html#tabs-2).
+As in the original paper, we tested the effect on the gamma frequency on layer 2/3 of increasing the stimulus on the simulation. Higher input values lead to stronger gamma rhythms in the excitatory firing rate power spectrum. Note that, to obtain this power spectrum the authors subtracted the case with no input to the case with different inputs.
 
-#### Python
-So far, we have reproduced the main findings described by Mejias et al., 2016 at the [intralaminar](https://github.com/OpenSourceBrain/MejiasEtAl2016/blob/master/Python/intralaminar.py) and [interlaminar](https://github.com/OpenSourceBrain/MejiasEtAl2016/blob/master/Python/interlaminar.py) level. The main results are described [here](Python/README.md).
+**Run the analysis:**
+```bash
+python main.py -analysis intralaminar
+```
 
-#### NeuroML2
-A basic implementation and simulation of the intralaminar model have also been implemented in NeuroML2/LEMS. [GenerateNeuroMLlite.py](https://github.com/OpenSourceBrain/MejiasEtAl2016/blob/master/NeuroML2/GenerateNeuroMLlite.py) generates the LEMS file with the description of the network.
+**Output files (saved to `data/intralaminar/`):**
+- `L23_simulation.pckl` - Simulation data
+- `intralaminar_2B.png` - Power spectrum analysis
+- `intralaminar_2C.png` - Peak power and frequency analysis
 
-The simulation can be run by calling inside the NeuroML2 folder:
+## Interlaminar Analysis
 
-    python GenerateNeuroMLlite.py -jnml
+Here we consider connections between the L2/3 and L5/6 layer. As described in the original paper, when the interlaminar coupling is present (green and orange lines below) the oscillatory dynamics spread across the layers. This is clearly visible in the plot below, where the power spectrum of Layer 2/3 shows a strong alpha component only when both layers are coupled.
 
+### Interlaminar A - Power Spectrum Comparison
 
-### Requirements
-The necessary Python packages are listed on the [requirements.txt](https://github.com/OpenSourceBrain/MejiasEtAl2016/blob/master/requirements.txt) file.
+**Run the analysis:**
+```bash
+python main.py -analysis interlaminar_a
+```
 
+**Output files (saved to `data/interlaminar_a/`):**
+- `simulation.pckl` - Simulation data
+- `power_spectrum.png` - Coupled vs uncoupled power spectrum
+- `power_spectrum_neurodsp_L23.png` - L2/3 power spectrum (neurodsp)
+- `power_spectrum_neurodsp_L56.png` - L5/6 power spectrum (neurodsp)
 
-### Data & code sources
+### Interlaminar B - Activity Traces
 
-As outlined above, the original Matlab scripts related to [Mejias et al. 2016](http://advances.sciencemag.org/content/2/11/e1601335) were taken from [ModelDB](https://senselab.med.yale.edu/ModelDB/showmodel.cshtml?model=249589&file=/Mejias2016/readme.html#tabs-2).
+To further analyse the dynamic interaction between the two layers the authors analysed the LFP (Local Field Potential) from the layer 5/6 with respect to the alpha rhythm from Layer 2/3.
 
-The data on 3D positions of areas ([MERetal14_on_F99.tsv](NeuroML2/MERetal14_on_F99.tsv)) was taken from https://scalablebrainatlas.incf.org/macaque/MERetal14#downloads; https://scalablebrainatlas.incf.org/services/regioncenters.php
+**Run the analysis:**
+```bash
+python main.py -analysis interlaminar_b
+```
 
-- Markov NT, Ercsey-Ravasz MM, Ribeiro Gomes AR, Lamy C, Magrou L, Vezoli J, Misery P, Falchier A, Quilodran R, Gariel MA, Sallet J, Gamanut R, Huissoud C, Clavagnier S, Giroud P, Sappey-Marinier D, Barone P, Dehay C, Toroczkai Z, Knoblauch K, Van Essen DC, Kennedy H (2014) "A weighted and directed interareal connectivity matrix for macaque cerebral cortex." [Cereb Cortex 24(1):17-36.](http://dx.doi.org/10.1093/cercor/bhs270)
+**Output files (saved to `data/interlaminar_b/`):**
+- `simulation.pckl` - Simulation data
+- `activity_traces.png` - L5/6 activity traces aligned to alpha peaks
 
-- Rembrandt Bakker, Paul Tiesinga, Rolf Kötter (2015) "The Scalable Brain Atlas: instant web-based access to public brain atlases and related content." Neuroinformatics. http://link.springer.com/content/pdf/10.1007/s12021-014-9258-x ([arXiv](http://arxiv.org/abs/1312.6310)) 
+### Interlaminar C - Input Sweep Analysis
 
+**Run the analysis:**
+```bash
+python main.py -analysis interlaminar_c
+```
 
+**Output files (saved to `data/interlaminar_c/`):**
+- `interlaminar_3C.png` - Multi-panel analysis of gamma/alpha power vs L5/6E input
+
+## Interareal Analysis (Figure 4)
+
+Simulates two cortical areas (V1 and V4) with interareal connectivity to study how stimulation in one area affects oscillatory dynamics in the other.
+
+**Run the analysis:**
+```bash
+python main.py -analysis interareal
+```
+
+**Output files (saved to `data/interareal/`):**
+- `stimulate_V1_layer_V4_l23.png` - V1 stimulation, V4 L2/3 response
+- `stimulate_V1_layer_V4_l56.png` - V1 stimulation, V4 L5/6 response
+- `stimulate_V1_layer_gamma.png` - Gamma power comparison
+- `stimulate_V1_layer_alpha.png` - Alpha power comparison
+- `stimulate_V4_layer_V1_l23.png` - V4 stimulation, V1 L2/3 response
+- `stimulate_V4_layer_V1_l56.png` - V4 stimulation, V1 L5/6 response
+- `stimulate_V4_layer_gamma.png` - Gamma power comparison
+- `stimulate_V4_layer_alpha.png` - Alpha power comparison
+
+## Large-Scale Network Analysis
+
+Simulates a full 30-area macaque cortical network with realistic connectivity based on anatomical data. Analyzes oscillatory power (alpha and gamma bands) across all areas.
+
+**Run the analysis:**
+```bash
+python main.py -analysis largescale
+```
+
+**Output files (saved to `data/largescale/`):**
+- `simulation.pckl` - Full network simulation data
+- `power_by_area.png` - Alpha and gamma power by area
+
+## Lesion Analysis (Stroke Simulation)
+
+Simulates cortical lesions (strokes) by selectively disabling brain areas and measuring the impact on network dynamics. This allows studying:
+- How lesions affect firing rates in other areas
+- Changes in oscillatory power (alpha/gamma bands)
+- Distance-dependent effects of lesions
+- Network resilience and compensatory mechanisms
+
+**Run the analysis:**
+```bash
+python main.py -analysis lesion
+```
+
+**Configuration (in `main.py`):**
+- `lesion_areas_names`: List of areas to lesion (e.g., `['V4']` or `['8l', '7A', '46d']`)
+- `lesion_type`: Type of lesion
+  - `'complete'`: Remove all activity and connectivity (default)
+  - `'activity_only'`: Clamp activity to 0, keep connections
+  - `'output_loss'`: Remove outgoing connections only
+  - `'input_loss'`: Remove incoming connections only
+
+**Output files (saved to `data/lesion_<area_names>/`):**
+- `baseline_simulation.pckl` - Healthy network simulation
+- `lesion_simulation.pckl` - Lesioned network simulation
+- `lesion_1_rate_changes.png` - Firing rate changes per area (excluding lesioned areas)
+- `lesion_2_absolute_rates.png` - Baseline vs lesioned absolute rates
+- `lesion_3_gamma_power.png` - Gamma band power changes
+- `lesion_4_alpha_power.png` - Alpha band power changes
+- `lesion_5_distance_effects.png` - Distance-dependent effects scatter plot
+- `power_by_area.png` - Power analysis for lesioned network
+
+**Example:**
+- Lesioning V4: Results saved to `data/lesion_V4/`
+- Lesioning multiple areas (8l, 7A, 46d): Results saved to `data/lesion_8l_7A_46d/`
+
+## Available Analysis Types
+
+- `intralaminar` - Single-layer dynamics
+- `interlaminar_a` - Power spectrum comparison
+- `interlaminar_b` - Activity traces
+- `interlaminar_c` - Input sweep analysis
+- `interareal` - Two-area connectivity
+- `largescale` - Full 30-area network
+- `lesion` - Stroke/lesion simulation
+- `debug` - Debugging mode
+
+## Notes
+
+- All simulations use a default time step of `dt=2e-4` seconds (0.2 ms)
+- Results are automatically saved to prevent re-computation
+- The `data/` folder structure keeps all outputs organized
+- Lesion analysis folder names automatically reflect the lesioned areas

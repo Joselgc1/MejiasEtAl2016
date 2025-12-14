@@ -97,6 +97,8 @@ def interlaminar_simulation(
 
     rate = calculate_rate(t, dt, tstop, J, tau, sig, Iext, Ibgk, noise, Nareas)
 
+    if not os.path.exists(analysis):
+        os.makedirs(analysis, exist_ok=True)
     picklename = os.path.join(analysis, 'simulation.pckl')
     with open(picklename, 'wb') as filename:
         pickle.dump(rate, filename)
@@ -322,7 +324,7 @@ def plot_spectrogram(ff, tt, Sxx):
     plt.ylim([25, 45])
     plt.show()
 
-def plot_power_spectrum_neurodsp(dt, rate_conn, rate_noconn, analysis):
+def plot_power_spectrum_neurodsp(dt, rate_conn, rate_noconn, output_dir='interlaminar'):
     fs = 1/dt
 
     # Plot the results for L23
@@ -337,6 +339,9 @@ def plot_power_spectrum_neurodsp(dt, rate_conn, rate_noconn, analysis):
     plt.ylabel('Power')
     plt.xlabel('Frequency (Hz)')
     plt.legend()
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    plt.savefig(os.path.join(output_dir, 'power_spectrum_neurodsp_L23.png'))
 
     # Plot the results for L56
     freq_mean_L56_conn, P_mean_L56_conn = spectral.compute_spectrum(rate_conn[2, :, 0], fs, avg_type='mean')
@@ -350,13 +355,14 @@ def plot_power_spectrum_neurodsp(dt, rate_conn, rate_noconn, analysis):
     plt.ylabel('Power')
     plt.xlabel('Frequency (Hz)')
     plt.legend()
+    plt.savefig(os.path.join(output_dir, 'power_spectrum_neurodsp_L56.png'))
 
 def plot_interlaminar_power_spectrum(
     fxx_uncoupled_l23_bin, fxx_coupled_l23_bin,
     pxx_uncoupled_l23_bin, pxx_coupled_l23_bin,
     fxx_uncoupled_l56_bin, fxx_coupled_l56_bin,
     pxx_uncoupled_l56_bin, pxx_coupled_l56_bin,
-    analysis):
+    output_dir='interlaminar_a'):
 
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(5, 7))
 
@@ -379,11 +385,11 @@ def plot_interlaminar_power_spectrum(
     ax2.set_ylim([10**-5, 10**0])
 
     plt.tight_layout()
-    if not os.path.exists(analysis):
-        os.makedirs(analysis)
-    plt.savefig(os.path.join(analysis, 'power_spectrum.png'), dpi=150, bbox_inches='tight')
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir, exist_ok=True)
+    plt.savefig(os.path.join(output_dir, 'power_spectrum.png'), dpi=150, bbox_inches='tight')
 
-def plot_activity_traces(dt, segment5, segindex, analysis):
+def plot_activity_traces(dt, segment5, segindex, output_dir='interlaminar_b'):
     # calculate the peak-centered alpha wave by averaging
     alphawaves = np.mean(segment5, axis=1)
     alphatime = [(i*dt) - (segindex*dt) for i in range(1, alphawaves.shape[0] + 1)]
@@ -395,12 +401,14 @@ def plot_activity_traces(dt, segment5, segindex, analysis):
     plt.xlabel('Time relative to alpha peak (s)')
     plt.ylabel('LFP, L5/6')
     plt.xlim([-.24, .24])
-    plt.savefig(os.path.join(analysis, 'activity_traces.png'))
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir, exist_ok=True)
+    plt.savefig(os.path.join(output_dir, 'activity_traces.png'))
 
 def interlaminar_3C_plot(results, analysis_name="interlaminar_c"):
 
     if not os.path.exists(analysis_name):
-        os.makedirs(analysis_name)
+        os.makedirs(analysis_name, exist_ok=True)
 
     I = results["I_L56E"]
 

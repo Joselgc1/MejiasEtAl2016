@@ -1,3 +1,4 @@
+import os
 import numpy as np
 from numpy.random import normal
 from scipy.stats import ttest_ind
@@ -192,7 +193,7 @@ def interareal_analysis(rate_rest, rate_stim, transient, dt, minfreq_l23, minfre
     return px20, px2, px50, px5, fx2, pgamma, palpha
 
 
-def plot_powerspectrum(recording_area, layer, px0, px, fx2, lcolours, stimulated_area, nstats):
+def plot_powerspectrum(recording_area, layer, px0, px, fx2, lcolours, stimulated_area, nstats, output_dir='interareal'):
     '''
     Plot power spectrum for the rest and stimulated layers for the areas under analysis
 
@@ -278,12 +279,14 @@ def plot_powerspectrum(recording_area, layer, px0, px, fx2, lcolours, stimulated
     plt.xlabel('Frequency(Hz)')
     plt.ylabel('%s %s Power' %(recording_area, layer))
     plt.legend()
-    plt.savefig('interareal/%s_layer_%s_%s.png' %(stimulated_area, recording_area, layer))
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir, exist_ok=True)
+    plt.savefig(os.path.join(output_dir, '%s_layer_%s_%s.png' %(stimulated_area, recording_area, layer)))
 
     return barrasfrequency
 
 
-def interareal_plt(areas, px20, px2, px50, px5, fx2, stimulated_area, nstats):
+def interareal_plt(areas, px20, px2, px50, px5, fx2, stimulated_area, nstats, output_dir='interareal'):
     '''
     Plot Powerspectrum and peak value of the power for the the passed areas of interest
 
@@ -310,8 +313,8 @@ def interareal_plt(areas, px20, px2, px50, px5, fx2, stimulated_area, nstats):
     lcolours = ['#1F5E43', '#31C522', '#944610', '#E67E22']
 
     # Plot power spectrum for the L23 and L5/6 Layers
-    barrasgamma = plot_powerspectrum(recording_area, 'l23', px20, px2, fx2, lcolours[:2], stimulated_area, nstats)
-    barrasalpha = plot_powerspectrum(recording_area, 'l56', px50, px5, fx2, lcolours[-2:], stimulated_area, nstats)
+    barrasgamma = plot_powerspectrum(recording_area, 'l23', px20, px2, fx2, lcolours[:2], stimulated_area, nstats, output_dir)
+    barrasalpha = plot_powerspectrum(recording_area, 'l56', px50, px5, fx2, lcolours[-2:], stimulated_area, nstats, output_dir)
 
     # Plot the peak value of the power spectraum at the supergranular layer for both areas
     if stimulated_area == 'stimulate_V4':
@@ -321,14 +324,17 @@ def interareal_plt(areas, px20, px2, px50, px5, fx2, stimulated_area, nstats):
         yaxis_gamma = [0, .007]
         yaxis_alpha = [0, .04]
 
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir, exist_ok=True)
+    
     plt.figure()
     plt.bar(['Rest', 'Stim'], barrasgamma[:, 0], color=lcolours[:2], yerr=barrasgamma[:, 1])
     plt.ylim(yaxis_gamma)
     plt.ylabel(r'$\gamma$ power')
-    plt.savefig('interareal/%s_layer_gamma.png' % (stimulated_area))
+    plt.savefig(os.path.join(output_dir, '%s_layer_gamma.png' % (stimulated_area)))
 
     plt.figure()
     plt.bar(['Rest', 'Stim'], barrasalpha[:, 0], color=lcolours[-2:], yerr=barrasalpha[:, 1])
     plt.ylabel(r'$\alpha$ power')
     plt.ylim(yaxis_alpha)
-    plt.savefig('interareal/%s_layer_alpha.png' % (stimulated_area))
+    plt.savefig(os.path.join(output_dir, '%s_layer_alpha.png' % (stimulated_area)))

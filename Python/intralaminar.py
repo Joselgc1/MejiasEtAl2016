@@ -48,6 +48,8 @@ def intralaminar_simulation(
             simulation[Iext][nrun]['L5_I/0/L5_I/r'] = rate[3, :].reshape(-1)
 
 
+    if not os.path.exists(analysis):
+        os.makedirs(analysis, exist_ok=True)
     picklename = os.path.join(analysis, layer + '_simulation.pckl')
     with open(picklename, 'wb') as file1:
         pickle.dump(simulation, file1)
@@ -205,7 +207,7 @@ def intralaminar_peak_analysis(
 
     return results
 
-def intralaminar_plt(psd_dic):
+def intralaminar_plt(psd_dic, output_dir='intralaminar'):
     # select only the first time points until fxx < 100
     fxx_plt_idx = np.where(psd_dic['fxx_bin'] < 100)
     fxx_plt = psd_dic['fxx_bin'][fxx_plt_idx]
@@ -244,12 +246,12 @@ def intralaminar_plt(psd_dic):
     formatter.set_powerlimits((-3, -3))
     ax.yaxis.set_major_formatter(formatter)
 
-    if not os.path.exists('intralaminar'):
-        os.makedirs('intralaminar')
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
 
-    plt.savefig('intralaminar/intralaminar_2B.png')
+    plt.savefig(os.path.join(output_dir, 'intralaminar_2B.png'))
 
-def intralaminar_peak_plt(results):
+def intralaminar_peak_plt(results, output_dir='intralaminar'):
     Iexts = np.array(results['L23']['Iext'])
 
     alpha = 0.3
@@ -286,4 +288,6 @@ def intralaminar_peak_plt(results):
     axs[1,1].set_ylabel('Alpha peak freq (Hz)')
 
     plt.tight_layout()
-    plt.savefig('intralaminar/intralaminar_2C.png')
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    plt.savefig(os.path.join(output_dir, 'intralaminar_2C.png'))
