@@ -1,6 +1,9 @@
 from __future__ import print_function, division
 
 import os
+import bct
+import networkx as nx
+import community.community_louvain as community_louvain
 import numpy as np
 import argparse
 import matplotlib.pylab as plt
@@ -20,7 +23,7 @@ from largescale import (
     get_macaque_connectivity, get_roi_subset, get_largescale_parameters,
     build_largescale_connectivity, run_largescale_trials,
     largescale_power_analysis, largescale_plt, 
-    apply_lesion, lesion_rate_analysis, lesion_power_analysis, lesion_plt
+    apply_lesion, lesion_rate_analysis, lesion_power_analysis, lesion_plt, modularity_plt
 )
 
 from helper_functions import firing_rate_analysis, get_network_configuration
@@ -46,9 +49,17 @@ def getArguments():
 if __name__ == "__main__":
     args = getArguments()
 
-    # Create folder where results will be saved
-    if not os.path.isdir(args.analysis):
-        os.mkdir(args.analysis)
+    # Create data folder if it doesn't exist
+    if not os.path.isdir('data'):
+        os.mkdir('data')
+    
+    # Determine output directory
+    if args.analysis == 'lesion':
+        output_dir = None
+    else:
+        output_dir = os.path.join('data', args.analysis)
+        if not os.path.isdir(output_dir):
+            os.mkdir(output_dir)
 
     if args.analysis == 'intralaminar':
         print('-----------------------')
@@ -57,7 +68,7 @@ if __name__ == "__main__":
 
         # Time parameters
         dt = args.dt
-        tstop = 25        # seconds
+        tstop = 25 # seconds
         t = np.linspace(0, int(tstop), int(tstop/dt))
         transient = 5
 
@@ -72,11 +83,11 @@ if __name__ == "__main__":
         print(f'    Analysing layer {layer}')
 
         # Check if simulation already exists
-        simulation_file = 'intralaminar/L23_simulation.pckl'
+        simulation_file = os.path.join(output_dir, 'L23_simulation.pckl')
         if not os.path.isfile(simulation_file):
             print('    Re-calculating the simulation...')
             simulation = intralaminar_simulation(
-                args.analysis, layer, Iexts, Ibgk, nruns,
+                output_dir, layer, Iexts, Ibgk, nruns,
                 t, dt, tstop, J, tau, sig, args.sigmaoverride, Nareas
             )
         else:
@@ -91,8 +102,8 @@ if __name__ == "__main__":
         psd_analysis = intralaminar_analysis(
             simulation, Iexts, nruns, layer, dt, transient
         )
-        intralaminar_plt(psd_analysis)
-        print('    Saved: intralaminar/intralaminar_2B.png')
+        intralaminar_plt(psd_analysis, output_dir=output_dir)
+        print(f'    Saved: {output_dir}/intralaminar_2B.png')
 
         # -------------------------------
         #   FIGURE 2C – Peak Power / Frequency
@@ -101,11 +112,11 @@ if __name__ == "__main__":
         peak_results = intralaminar_peak_analysis(
             simulation, Iexts, nruns, layer, dt, transient
         )
-        intralaminar_peak_plt(peak_results)
-        print('    Saved: intralaminar/intralaminar_2C.png')
+        intralaminar_peak_plt(peak_results, output_dir=output_dir)
+        print(f'    Saved: {output_dir}/intralaminar_2C.png')
 
         print('Intralaminar analysis completed.')
-
+    
     if args.analysis == 'interlaminar_a':
         print('-----------------------')
         print('Interlaminar Analysis')
@@ -128,7 +139,7 @@ if __name__ == "__main__":
 
         # Calculate the rate
         rate_conn = interlaminar_simulation(
-            args.analysis, t, dt, tstop, J_conn, tau, sig, 
+            output_dir, t, dt, tstop, J_conn, tau, sig, 
             Iext_conn, Ibgk_conn, args.sigmaoverride, Nareas
         )
         pxx_coupled_l23_bin, fxx_coupled_l23_bin, pxx_coupled_l56_bin, fxx_coupled_l56_bin = calculate_interlaminar_power_spectrum(rate_conn, dt, transient, Nbin)
@@ -137,7 +148,7 @@ if __name__ == "__main__":
         tau, sig, J_noconn, Iext_noconn, Ibgk_noconn = get_network_configuration('interlaminar_u', noconns=False)
 
         rate_noconn = interlaminar_simulation(
-            args.analysis, t, dt, tstop, J_noconn, tau, sig, 
+            output_dir, t, dt, tstop, J_noconn, tau, sig, 
             Iext_noconn, Ibgk_conn, args.sigmaoverride, Nareas
         )
         pxx_uncoupled_l23_bin, fxx_uncoupled_l23_bin, pxx_uncoupled_l56_bin, fxx_uncoupled_l56_bin = calculate_interlaminar_power_spectrum(rate_noconn, dt, transient, Nbin)
@@ -148,11 +159,11 @@ if __name__ == "__main__":
             pxx_uncoupled_l23_bin, pxx_coupled_l23_bin,
             fxx_uncoupled_l56_bin, fxx_coupled_l56_bin,
             pxx_uncoupled_l56_bin, pxx_coupled_l56_bin,
-            args.analysis
+            output_dir
         )
 
         # Plot spectrogram using neurodsp
-        plot_power_spectrum_neurodsp(dt,rate_conn, rate_noconn, 'interlaminar')
+        plot_power_spectrum_neurodsp(dt, rate_conn, rate_noconn, output_dir)
 
         # Pickle the results rate over time
         # Transform the results so that they are saved in a dic (similar to NeuroML output)
@@ -168,9 +179,9 @@ if __name__ == "__main__":
             'ts': t
         }
 
-        picklename = os.path.join(args.analysis, 'simulation.pckl')
+        picklename = os.path.join(output_dir, 'simulation.pckl')
         if not os.path.exists(picklename):
-            os.mkdir(os.path.dirname(picklename))
+            os.makedirs(os.path.dirname(picklename), exist_ok=True)
 
         with open(picklename, 'wb') as filename:
             pickle.dump(pyrate, filename)
@@ -201,10 +212,10 @@ if __name__ == "__main__":
         min_freq2 = 30 # gama range
 
         # check if file with simulation exists, if not calculate the simulation
-        simulation_file = os.path.join(args.analysis, 'simulation.pckl')
+        simulation_file = os.path.join(output_dir, 'simulation.pckl')
         if not os.path.isfile(simulation_file):
             print('    Re-calculating the simulation')
-            rate = interlaminar_simulation(args.analysis, t, dt, tstop, J, tau, sig, Iext, Ibgk, args.sigmaoverride, Nareas)
+            rate = interlaminar_simulation(output_dir, t, dt, tstop, J, tau, sig, Iext, Ibgk, args.sigmaoverride, Nareas)
         else:
             print('    Loading the pre-saved simulation file: %s' %simulation_file)
             with open(simulation_file, 'rb') as filename:
@@ -212,10 +223,7 @@ if __name__ == "__main__":
 
         # Analyse and Plot traces of activity in layer 5/6
         segment5, segment2, segindex, numberofzones = interlaminar_activity_analysis(rate, transient, dt, t, min_freq5)
-        plot_activity_traces(dt, segment5, segindex, args.analysis)
-
-        # # Analyse and Plot spectrogram of layer L2/3
-        # ff, tt, Sxx = interlaminar_analysis_periodeogram(rate, segment2, transient, dt, min_freq2, numberofzones)
+        plot_activity_traces(dt, segment5, segindex, output_dir)
 
     if args.analysis == 'interlaminar_c':
         print('-----------------------')
@@ -245,8 +253,8 @@ if __name__ == "__main__":
             transient,
         )
 
-        interlaminar_3C_plot(results, analysis_name=args.analysis)
-        print('    Saved: interlaminar_c/interlaminar_3C.png')
+        interlaminar_3C_plot(results, analysis_name=output_dir)
+        print(f'    Saved: {output_dir}/interlaminar_3C.png')
 
     if args.analysis == 'interareal':
         print('-----------------------')
@@ -311,10 +319,11 @@ if __name__ == "__main__":
             px50=px50_v1, px5=px5_v1,
             fx2=fx2_v1,
             stimulated_area='stimulate_V1',
-            nstats=nstats
+            nstats=nstats,
+            output_dir=output_dir
         )
         print(f'    Gamma p-value: {pgamma_v1:.4f}, Alpha p-value: {palpha_v1:.4f}')
-        print('    Saved: interareal/stimulate_V1_*.png')
+        print(f'    Saved: {output_dir}/stimulate_V1_*.png')
 
         # ============================================
         # Stimulate V4, Record V1
@@ -348,10 +357,11 @@ if __name__ == "__main__":
             px50=px50_v4, px5=px5_v4,
             fx2=fx2_v4,
             stimulated_area='stimulate_V4',
-            nstats=nstats
+            nstats=nstats,
+            output_dir=output_dir
         )
         print(f'    Gamma p-value: {pgamma_v4:.4f}, Alpha p-value: {palpha_v4:.4f}')
-        print('    Saved: interareal/stimulate_V4_*.png')
+        print(f'    Saved: {output_dir}/stimulate_V4_*.png')
         
         print('Interareal analysis completed.')
 
@@ -404,7 +414,7 @@ if __name__ == "__main__":
         Wff, Wfb, delays, s = build_largescale_connectivity(fln_mat, sln_mat, wiring, par)
 
         # Check if simulation already exists
-        simulation_file = os.path.join(args.analysis, 'simulation.pckl')
+        simulation_file = os.path.join(output_dir, 'simulation.pckl')
         if not os.path.isfile(simulation_file):
             print(f'\n    Running {ntrials} trials (this may take a while)...')
             X, X2, X5 = run_largescale_trials(par, Wff, Wfb, delays, s, Iext, tstop, transient, ntrials)
@@ -429,7 +439,7 @@ if __name__ == "__main__":
         #   Plot Results
         # -------------------------------
         print('\n    Generating plots...')
-        largescale_plt(power_results, area_names, roi_indices if use_roi_subset else None, args.analysis)
+        largescale_plt(power_results, area_names, roi_indices if use_roi_subset else None, output_dir)
         print('Large-scale analysis completed.')
 
     if args.analysis == 'lesion':
@@ -456,11 +466,24 @@ if __name__ == "__main__":
         Iext[0, 0] += Iexternal  # Additional input to V1 L2/3E
 
         # ROI subset for analysis (Kennedy-Fries Neuron 2015 selection)
-        use_roi_subset = True
+        use_roi_subset = False
 
         # Lesion configuration
-        lesion_areas_names = ['8l', '7A', '46d']  # Areas to lesion (by name)
-        lesion_type = 'activity_only'  # Type of lesion
+        # V4: Visual area 4
+        # MT or V5: motion blindness
+        # LIP: Lateral Intraparietal area
+        # V1: Visual area 1
+        # 8l, 7A, 46d: Frontal Connectors
+        # F1: Frontal area 1
+
+        lesion_areas_names = ['LIP']  # Areas to lesion (by name)
+        lesion_type = 'complete'  # Type of lesion
+        
+        # Create output directory based on lesioned areas
+        lesion_folder_name = 'lesion_' + '_'.join(lesion_areas_names)
+        output_dir = os.path.join('data', lesion_folder_name)
+        if not os.path.isdir(output_dir):
+            os.makedirs(output_dir, exist_ok=True)
 
         print(f'    Time step: {dt}s')
         print(f'    Trial length: {tstop}s')
@@ -485,6 +508,17 @@ if __name__ == "__main__":
 
         # Get network parameters
         par = get_largescale_parameters(Nareas, dt)
+
+        # Modularity analysis
+        W_sym = (fln_mat + fln_mat.T) / 2
+        G = nx.from_numpy_array(W_sym)
+        partition = community_louvain.best_partition(G, weight='weight', resolution=1.0)
+        partition = np.array([partition[i] for i in range(len(fln_mat))])
+
+        P = bct.participation_coef(fln_mat, partition)
+        Z = bct.module_degree_zscore(fln_mat, partition)
+
+        modularity_plt(P, Z, partition, area_names, output_dir)
         
         # Build connectivity matrices
         print('    Building connectivity matrices...')
@@ -494,7 +528,7 @@ if __name__ == "__main__":
         #   Baseline Simulation
         # -------------------------------
         # Check if simulation already exists
-        baseline_file = os.path.join(args.analysis, 'baseline_simulation.pckl')
+        baseline_file = os.path.join(output_dir, 'baseline_simulation.pckl')
         if not os.path.isfile(baseline_file):
             print(f'\n    Running baseline simulation ({ntrials} trials)...')
             X_baseline, X2_baseline, X5_baseline = run_largescale_trials(par, Wff, Wfb, delays, s, Iext, tstop, transient, ntrials, clamp_mask=None)
@@ -520,7 +554,7 @@ if __name__ == "__main__":
         # -------------------------------
         #   Lesioned Simulation
         # -------------------------------
-        lesion_file = os.path.join(args.analysis, 'lesion_simulation.pckl')
+        lesion_file = os.path.join(output_dir, 'lesion_simulation.pckl')
         if not os.path.isfile(lesion_file):
             print(f'\n    Running lesioned simulation ({ntrials} trials)...')
             X_lesion, X2_lesion, X5_lesion = run_largescale_trials(par, Wff_lesion, Wfb_lesion, delays_lesion, s_lesion, Iext_lesion, tstop, transient, ntrials, clamp_mask=clamp_mask)
@@ -562,13 +596,13 @@ if __name__ == "__main__":
         #   Plot Results
         # -------------------------------
         print('\n    Generating plots...')
-        largescale_plt(power_results, area_names, roi_indices if use_roi_subset else None, args.analysis)
+        largescale_plt(power_results, area_names, roi_indices if use_roi_subset else None, output_dir)
         lesion_plt(
             rate_results, lesion_power_results,
             full_area_names=area_names,
             lesion_names=lesion_areas_names,
             lesion_indices_full=lesion_indices,
-            output_dir=args.analysis,
+            output_dir=output_dir,
             roi_indices=roi_indices if use_roi_subset else None  # Use ROI subset for cleaner plots
         )
         
@@ -593,7 +627,7 @@ if __name__ == "__main__":
         print(f'  Mean gamma power change: {gamma_mean_change:.2f}%')
         print(f'  Mean alpha power change: {alpha_mean_change:.2f}%')
         
-        print(f'\nResults saved to {args.analysis}/')
+        print(f'\nResults saved to {output_dir}/')
         print('Lesion analysis completed.')
 
     if args.analysis == 'debug':

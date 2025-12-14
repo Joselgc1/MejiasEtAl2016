@@ -43,7 +43,7 @@ def get_roi_subset(areas):
     These 8 areas: V1, V2, V4, DP, 8m, 8l, TEO, 7A
     """
     # Indices in the 30-area list
-    roi_names = ['V1', 'V2', 'V4', 'DP', 'MT', '8m', '8l', 'TEO', '7A', 'TEpd']
+    roi_names = ['V1', 'V2', 'V4', 'DP', 'MT', '8m', '8l', 'TEO', '7A', 'TEpd', '46d']
     roi_indices = [list(areas).index(str(name)) for name in roi_names]
     return roi_names, roi_indices
 
@@ -146,11 +146,12 @@ def build_largescale_connectivity(fln_mat, sln_mat, wiring, par, G=1.1):
     # v = 1.5 m/s = 1500 mm/s
     velocity = 1500  # mm/s
     delays = np.round(1 + wiring / (velocity * dt)).astype(int)
+    delays = np.ascontiguousarray(delays)
     
     # Selectivity matrix for FB projections (proportion targeting different layers)
     s = np.ascontiguousarray(0.1 * np.ones((Nareas, Nareas)))
     
-    return Wff, Wfb, np.ascontiguousarray(delays), s
+    return Wff, Wfb, delays, s
 
 
 # ============================================================================
@@ -420,18 +421,18 @@ def apply_lesion(Wff, Wfb, delays, s, Iext, lesion_areas, lesion_type='complete'
             # Only clamp activity, leave connections intact
             clamp_mask[area_idx] = True
             Iext_lesion[:, area_idx] = 0
+
+        elif lesion_type == 'input_loss':
+            # Remove incoming connections only (deafferentation)
+            Wff_lesion[:, area_idx] = 0
+            Wfb_lesion[:, area_idx] = 0
+            s_lesion[:, area_idx] = 0
             
         elif lesion_type == 'output_loss':
             # Remove outgoing connections only (white matter lesion)
             Wff_lesion[area_idx, :] = 0
             Wfb_lesion[area_idx, :] = 0
             s_lesion[area_idx, :] = 0
-            
-        elif lesion_type == 'input_loss':
-            # Remove incoming connections only (deafferentation)
-            Wff_lesion[:, area_idx] = 0
-            Wfb_lesion[:, area_idx] = 0
-            s_lesion[:, area_idx] = 0
     
     return Wff_lesion, Wfb_lesion, delays_lesion, s_lesion, Iext_lesion, clamp_mask
 
@@ -719,7 +720,7 @@ def lesion_plt(rate_results, power_results, full_area_names, lesion_names, lesio
         area_names = [full_area_names[i] for i in roi_indices]
         # Map lesion indices to ROI space
         lesion_indices_plot = [roi_indices.index(i) for i in lesion_indices_full if i in roi_indices]
-        subset_label = " (ROI Subset)"
+        subset_label = ""
     else:
         # Use all areas
         plot_indices = list(range(len(full_area_names)))
@@ -740,35 +741,48 @@ def lesion_plt(rate_results, power_results, full_area_names, lesion_names, lesio
     gamma_change = power_results['gamma_change'][plot_indices]
     alpha_change = power_results['alpha_change'][plot_indices]
     
+    # Create filtered data excluding lesioned areas for figures 1, 3, 4, 5
+    non_lesion_mask = [i not in lesion_indices_plot for i in range(Nareas)]
+    non_lesion_indices = [i for i in range(Nareas) if i not in lesion_indices_plot]
+    
+    rate_change_filtered = rate_change[non_lesion_mask]
+    pvalues_filtered = pvalues[non_lesion_mask]
+    significant_filtered = significant[non_lesion_mask]
+    gamma_change_filtered = gamma_change[non_lesion_mask]
+    alpha_change_filtered = alpha_change[non_lesion_mask]
+    area_names_filtered = [area_names[i] for i in non_lesion_indices]
+    
+    Nareas_filtered = len(non_lesion_indices)
+    x_pos_filtered = np.arange(Nareas_filtered)
+    
     # -------------------------------------------------------------------------
-    # 1. Firing Rate Changes
+    # 1. Firing Rate Changes (excluding lesioned areas)
     # -------------------------------------------------------------------------
     fig1, ax1 = plt.subplots(figsize=(12, 6))
-    colors = ['red' if i in lesion_indices_plot else 'steelblue' for i in range(Nareas)]
-    bars = ax1.bar(x_pos, rate_change, color=colors, alpha=0.8, edgecolor='black', linewidth=0.5)
+    colors = ['steelblue'] * Nareas_filtered
+    bars = ax1.bar(x_pos_filtered, rate_change_filtered, color=colors, alpha=0.8, edgecolor='black', linewidth=0.5)
     
     # Add percentage labels and significance stars on top of bars
-    for i, (val, sig) in enumerate(zip(rate_change, significant)):
+    for i, (val, sig) in enumerate(zip(rate_change_filtered, significant_filtered)):
         y_pos = val
         # Position label above or below bar
         if val >= 0:
             va = 'bottom'
-            offset = 1
+            offset = 0.1
         else:
             va = 'top'
-            offset = -1
+            offset = -0.1
         # Add percentage label
         label = f'{val:.1f}%'
         ax1.text(i, y_pos + offset, label, ha='center', va=va, fontsize=8, fontweight='bold' if sig else 'normal')
     
     ax1.axhline(0, color='black', linestyle='-', linewidth=1)
-    ax1.set_xticks(x_pos)
-    ax1.set_xticklabels(area_names, rotation=45, ha='right', fontsize=10)
+    ax1.set_xticks(x_pos_filtered)
+    ax1.set_xticklabels(area_names_filtered, rotation=45, ha='right', fontsize=10)
     ax1.set_ylabel('Firing Rate Change (%)', fontsize=12)
     ax1.set_xlabel('Brain Area', fontsize=12)
     ax1.set_title(f'Firing Rate Changes After Lesion{subset_label}\n({lesion_title})', fontsize=14, fontweight='bold')
-    ax1.grid(True, alpha=0.3, axis='y')
-    ax1.set_xlim(-0.5, Nareas - 0.5)
+    ax1.set_xlim(-0.5, Nareas_filtered - 0.5)
     # Expand y-axis to fit labels
     ymin, ymax = ax1.get_ylim()
     ax1.set_ylim(ymin - abs(ymin)*0.15, ymax + abs(ymax)*0.15)
@@ -790,8 +804,8 @@ def lesion_plt(rate_results, power_results, full_area_names, lesion_names, lesio
     
     # Highlight lesioned areas
     for idx in lesion_indices_plot:
-        ax2.axvline(idx, color='red', alpha=0.3, linestyle='--', linewidth=2)
-        ax2.axvspan(idx - 0.4, idx + 0.4, alpha=0.15, color='red')
+        ax2.axvline(idx, color='darkred', alpha=0.3, linestyle='--', linewidth=2)
+        ax2.axvspan(idx - 0.4, idx + 0.4, alpha=0.15, color='darkred')
     
     ax2.set_xticks(x_pos)
     ax2.set_xticklabels(area_names, rotation=45, ha='right', fontsize=10)
@@ -799,7 +813,6 @@ def lesion_plt(rate_results, power_results, full_area_names, lesion_names, lesio
     ax2.set_xlabel('Brain Area', fontsize=12)
     ax2.set_title(f'Absolute Firing Rates: Baseline vs Lesioned{subset_label}\n({lesion_title})', fontsize=14, fontweight='bold')
     ax2.legend(fontsize=11, loc='upper right')
-    ax2.grid(True, alpha=0.3)
     ax2.set_xlim(-0.5, Nareas - 0.5)
     plt.tight_layout()
     
@@ -809,30 +822,29 @@ def lesion_plt(rate_results, power_results, full_area_names, lesion_names, lesio
     plt.close(fig2)
     
     # -------------------------------------------------------------------------
-    # 3. Gamma Power Changes
+    # 3. Gamma Power Changes (excluding lesioned areas)
     # -------------------------------------------------------------------------
     fig3, ax3 = plt.subplots(figsize=(12, 6))
-    colors = ['red' if i in lesion_indices_plot else 'purple' for i in range(Nareas)]
-    ax3.bar(x_pos, gamma_change, color=colors, alpha=0.8, edgecolor='black', linewidth=0.5)
+    colors = ['orange'] * Nareas_filtered
+    ax3.bar(x_pos_filtered, gamma_change_filtered, color=colors, alpha=0.8, edgecolor='black', linewidth=0.5)
     
     # Add percentage labels on top of bars
-    for i, val in enumerate(gamma_change):
+    for i, val in enumerate(gamma_change_filtered):
         if val >= 0:
             va = 'bottom'
-            offset = 1
+            offset = 0.1
         else:
             va = 'top'
-            offset = -1
+            offset = -0.1
         ax3.text(i, val + offset, f'{val:.1f}%', ha='center', va=va, fontsize=8)
     
     ax3.axhline(0, color='black', linestyle='-', linewidth=1)
-    ax3.set_xticks(x_pos)
-    ax3.set_xticklabels(area_names, rotation=45, ha='right', fontsize=10)
+    ax3.set_xticks(x_pos_filtered)
+    ax3.set_xticklabels(area_names_filtered, rotation=45, ha='right', fontsize=10)
     ax3.set_ylabel('Gamma Power Change (%)', fontsize=12)
     ax3.set_xlabel('Brain Area', fontsize=12)
     ax3.set_title(f'Gamma Band Power Changes (30-70 Hz){subset_label}\n({lesion_title})', fontsize=14, fontweight='bold')
-    ax3.grid(True, alpha=0.3, axis='y')
-    ax3.set_xlim(-0.5, Nareas - 0.5)
+    ax3.set_xlim(-0.5, Nareas_filtered - 0.5)
     # Expand y-axis to fit labels
     ymin, ymax = ax3.get_ylim()
     ax3.set_ylim(ymin - abs(ymin)*0.15, ymax + abs(ymax)*0.15)
@@ -844,30 +856,29 @@ def lesion_plt(rate_results, power_results, full_area_names, lesion_names, lesio
     plt.close(fig3)
     
     # -------------------------------------------------------------------------
-    # 4. Alpha Power Changes
+    # 4. Alpha Power Changes (excluding lesioned areas)
     # -------------------------------------------------------------------------
     fig4, ax4 = plt.subplots(figsize=(12, 6))
-    colors = ['red' if i in lesion_indices_plot else 'forestgreen' for i in range(Nareas)]
-    ax4.bar(x_pos, alpha_change, color=colors, alpha=0.8, edgecolor='black', linewidth=0.5)
+    colors = ['purple'] * Nareas_filtered
+    ax4.bar(x_pos_filtered, alpha_change_filtered, color=colors, alpha=0.8, edgecolor='black', linewidth=0.5)
     
     # Add percentage labels on top of bars
-    for i, val in enumerate(alpha_change):
+    for i, val in enumerate(alpha_change_filtered):
         if val >= 0:
             va = 'bottom'
-            offset = 1
+            offset = 0.1
         else:
             va = 'top'
-            offset = -1
+            offset = -0.1
         ax4.text(i, val + offset, f'{val:.1f}%', ha='center', va=va, fontsize=8)
     
     ax4.axhline(0, color='black', linestyle='-', linewidth=1)
-    ax4.set_xticks(x_pos)
-    ax4.set_xticklabels(area_names, rotation=45, ha='right', fontsize=10)
+    ax4.set_xticks(x_pos_filtered)
+    ax4.set_xticklabels(area_names_filtered, rotation=45, ha='right', fontsize=10)
     ax4.set_ylabel('Alpha Power Change (%)', fontsize=12)
     ax4.set_xlabel('Brain Area', fontsize=12)
     ax4.set_title(f'Alpha Band Power Changes (4-18 Hz){subset_label}\n({lesion_title})', fontsize=14, fontweight='bold')
-    ax4.grid(True, alpha=0.3, axis='y')
-    ax4.set_xlim(-0.5, Nareas - 0.5)
+    ax4.set_xlim(-0.5, Nareas_filtered - 0.5)
     # Expand y-axis to fit labels
     ymin, ymax = ax4.get_ylim()
     ax4.set_ylim(ymin - abs(ymin)*0.15, ymax + abs(ymax)*0.15)
@@ -879,29 +890,32 @@ def lesion_plt(rate_results, power_results, full_area_names, lesion_names, lesio
     plt.close(fig4)
     
     # -------------------------------------------------------------------------
-    # 5. Distance-Dependent Effects
+    # 5. Distance-Dependent Effects (excluding lesioned areas)
     # -------------------------------------------------------------------------
     fig5, ax5 = plt.subplots(figsize=(10, 8))
     
-    # Compute "distance" from lesioned areas (simplified: use index distance in ROI space)
-    distances = np.zeros(Nareas)
-    for i in range(Nareas):
-        if i in lesion_indices_plot:
-            distances[i] = 0
+    # Compute "distance" from lesioned areas (simplified: use index distance)
+    # Only compute for non-lesioned areas
+    distances_filtered = np.zeros(Nareas_filtered)
+    for j, orig_idx in enumerate(non_lesion_indices):
+        if len(lesion_indices_plot) > 0:
+            # Get original index in full space
+            orig_plot_idx = plot_indices[orig_idx]
+            # Get original indices of lesioned areas
+            lesion_orig_indices = [plot_indices[idx] for idx in lesion_indices_plot]
+            # Compute minimum distance
+            distances_filtered[j] = min([abs(orig_plot_idx - lesion_orig_idx) for lesion_orig_idx in lesion_orig_indices])
         else:
-            if len(lesion_indices_plot) > 0:
-                distances[i] = min([abs(i - idx) for idx in lesion_indices_plot])
-            else:
-                distances[i] = i
+            distances_filtered[j] = j
     
-    # Scatter: distance vs rate change
-    colors_scatter = ['red' if i in lesion_indices_plot else 'dodgerblue' for i in range(Nareas)]
-    sizes = [150 if i in lesion_indices_plot else 80 for i in range(Nareas)]
-    ax5.scatter(distances, rate_change, c=colors_scatter, s=sizes, alpha=0.7, edgecolor='black', linewidth=0.5)
+    # Scatter: distance vs rate change (only non-lesioned areas)
+    colors_scatter = ['dodgerblue'] * Nareas_filtered
+    sizes = [80] * Nareas_filtered
+    ax5.scatter(distances_filtered, rate_change_filtered, c=colors_scatter, s=sizes, alpha=0.7, edgecolor='black', linewidth=0.5)
     
     # Add labels for each point
-    for i, name in enumerate(area_names):
-        ax5.annotate(name, (distances[i], rate_change[i]),
+    for j, name in enumerate(area_names_filtered):
+        ax5.annotate(name, (distances_filtered[j], rate_change_filtered[j]),
                      xytext=(5, 5), textcoords='offset points', fontsize=9,
                      alpha=0.8)
     
@@ -909,12 +923,10 @@ def lesion_plt(rate_results, power_results, full_area_names, lesion_names, lesio
     ax5.set_xlabel('Index Distance from Lesioned Area', fontsize=12)
     ax5.set_ylabel('Firing Rate Change (%)', fontsize=12)
     ax5.set_title(f'Distance-Dependent Effects of Lesion{subset_label}\n({lesion_title})', fontsize=14, fontweight='bold')
-    ax5.grid(True, alpha=0.3)
     
-    # Add legend
+    # Add legend (only non-lesioned areas now)
     legend_elements = [
-        Line2D([0], [0], marker='o', color='w', markerfacecolor='red', markersize=12, label='Lesioned Area'),
-        Line2D([0], [0], marker='o', color='w', markerfacecolor='dodgerblue', markersize=10, label='Other Areas')
+        Line2D([0], [0], marker='o', color='w', markerfacecolor='dodgerblue', markersize=10, label='Non-lesioned Areas')
     ]
     ax5.legend(handles=legend_elements, loc='best', fontsize=10)
     plt.tight_layout()
@@ -925,3 +937,49 @@ def lesion_plt(rate_results, power_results, full_area_names, lesion_names, lesio
     plt.close(fig5)
     
     print(f'    All lesion plots saved to: {output_dir}/')
+
+
+def modularity_plt(P, Z, partition, area_names, output_dir):
+    """
+    Create visualization of modularity analysis.
+    """
+    hub_types = {}
+
+    P_thresh = 0.3  # Participation threshold
+    Z_thresh = 1.0  # Hub threshold
+
+    # Visualization Plot
+    plt.figure(figsize=(12, 8))
+    
+    colors = [partition[i] for i in range(len(area_names))]
+    scatter = plt.scatter(P, Z, c=colors, cmap='tab20', s=120, alpha=0.7, edgecolors='black')
+
+    extra_space = 0.0075
+    for i, txt in enumerate(area_names):
+        plt.annotate(txt, (P[i]+extra_space, Z[i]+extra_space), fontsize=9, fontweight='bold')
+    
+    plt.axvline(x=P_thresh, color='black', linestyle='--', linewidth=1.5, alpha=0.6)
+    plt.axhline(y=Z_thresh, color='black', linestyle='--', linewidth=1.5, alpha=0.6)
+    
+    # Top-Left: Provincial Hubs
+    plt.text(0.1, 1.8, 'Provincial Hubs', fontsize=12, color='darkred', ha='center', fontweight='bold')
+
+    # Top-Right: Connector Hubs
+    plt.text(0.6, 1.8, 'Connector Hubs', fontsize=12, color='darkgreen', ha='center', fontweight='bold')
+
+    # Bottom-Right: Satellite Connectors
+    plt.text(0.6, -1.0, 'Satellite Connectors', fontsize=11, color='teal', ha='center', style='italic')
+
+    # Bottom-Left: Peripheral Nodes
+    plt.text(0.1, -0.75, 'Peripheral Nodes', fontsize=11, color='gray', ha='center', style='italic')
+
+    plt.xlabel('P-Coefficient\n← Local Connections ......... Global Connections →', fontsize=11)
+    plt.ylabel('Z-Score\n← Low Influence ......... High Influence →', fontsize=11)
+
+    plt.title('Functional Roles of Cortical Areas', fontsize=14)
+    plt.grid(True, alpha=0.2)
+    
+    # Save
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, 'hub_classification.png'))
+    plt.close()

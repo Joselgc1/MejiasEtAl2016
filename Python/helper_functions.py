@@ -56,7 +56,7 @@ def get_network_configuration(
         # Note: the range function does not include the end
         Iexts = range(Imin, Imax + Istep, Istep)
 
-    elif analysis_type == 'interlaminar_a':
+    elif analysis_type in ['interlaminar_a', 'interlaminar_c']:
         # define interlaminar synaptic coupling strengths
         J_2e = 1; J_2i = 0
         J_5e = 0; J_5i = 0.75
@@ -76,13 +76,6 @@ def get_network_configuration(
         J_5e = 0; J_5i = 0.75
 
         Iexts = np.array([6, 0, 8, 0])
-
-    elif analysis_type == 'interlaminar_c':
-        # define interlaminar synaptic coupling strengths
-        J_2e = 1; J_2i = 0
-        J_5e = 0; J_5i = 0.75
-
-        Iexts = np.array([8, 0, 8, 0])
 
     elif analysis_type == 'debug_intralaminar':
         Iexts = [0]
