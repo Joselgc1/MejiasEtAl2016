@@ -389,7 +389,7 @@ if __name__ == "__main__":
         Iext[0, 0] += Iexternal  # Additional input to V1 L2/3E
 
         # ROI subset for analysis (Kennedy-Fries Neuron 2015 selection)
-        use_roi_subset = True
+        use_roi_subset = False
 
         print(f'    Time step: {dt}s')
         print(f'    Trial length: {tstop}s')
@@ -475,12 +475,15 @@ if __name__ == "__main__":
         # V1: Visual area 1
         # 8l, 7A, 46d: Frontal Connectors
         # F1: Frontal area 1
+        # 7m: Medial prefrontal area
+        # 7A, 7m, 9/46v, 24c: Frontal Connectors
 
         lesion_areas_names = ['LIP']  # Areas to lesion (by name)
         lesion_type = 'complete'  # Type of lesion
         
         # Create output directory based on lesioned areas
-        lesion_folder_name = 'lesion_' + '_'.join(lesion_areas_names)
+        safe_lesion_names = [name.replace('/', '_') for name in lesion_areas_names]
+        lesion_folder_name = 'lesion_' + '_'.join(safe_lesion_names)
         output_dir = os.path.join('data', lesion_folder_name)
         if not os.path.isdir(output_dir):
             os.makedirs(output_dir, exist_ok=True)
