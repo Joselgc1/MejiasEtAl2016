@@ -822,13 +822,14 @@ def lesion_plt(rate_results, power_results, full_area_names, lesion_names, lesio
     plt.close(fig2)
     
     # -------------------------------------------------------------------------
-    # 3. Gamma Power Changes (excluding lesioned areas)
+    # 3 & 4. Gamma and Alpha Power Changes (excluding lesioned areas, side by side)
     # -------------------------------------------------------------------------
-    fig3, ax3 = plt.subplots(figsize=(12, 6))
-    colors = ['orange'] * Nareas_filtered
-    ax3.bar(x_pos_filtered, gamma_change_filtered, color=colors, alpha=0.8, edgecolor='black', linewidth=0.5)
+    fig3, (ax3, ax4) = plt.subplots(1, 2, figsize=(18, 6), sharey=False)
     
-    # Add percentage labels on top of bars
+    # Gamma subplot
+    colors_gamma = ['orange'] * Nareas_filtered
+    ax3.bar(x_pos_filtered, gamma_change_filtered, color=colors_gamma, alpha=0.8, edgecolor='black', linewidth=0.5)
+    
     for i, val in enumerate(gamma_change_filtered):
         if val >= 0:
             va = 'bottom'
@@ -841,28 +842,17 @@ def lesion_plt(rate_results, power_results, full_area_names, lesion_names, lesio
     ax3.axhline(0, color='black', linestyle='-', linewidth=1)
     ax3.set_xticks(x_pos_filtered)
     ax3.set_xticklabels(area_names_filtered, rotation=45, ha='right', fontsize=10)
-    ax3.set_ylabel('Gamma Power Change (%)', fontsize=12)
+    ax3.set_ylabel('Power Change (%)', fontsize=12)
     ax3.set_xlabel('Brain Area', fontsize=12)
-    ax3.set_title(f'Gamma Band Power Changes (30-70 Hz){subset_label}\n({lesion_title})', fontsize=14, fontweight='bold')
+    ax3.set_title(f'Gamma Band (30-70 Hz){subset_label}', fontsize=13, fontweight='bold')
     ax3.set_xlim(-0.5, Nareas_filtered - 0.5)
-    # Expand y-axis to fit labels
     ymin, ymax = ax3.get_ylim()
     ax3.set_ylim(ymin - abs(ymin)*0.15, ymax + abs(ymax)*0.15)
-    plt.tight_layout()
     
-    save_path = os.path.join(output_dir, 'lesion_3_gamma_power.png')
-    plt.savefig(save_path, dpi=200, bbox_inches='tight')
-    print(f'    Saved: {save_path}')
-    plt.close(fig3)
+    # Alpha subplot
+    colors_alpha = ['purple'] * Nareas_filtered
+    ax4.bar(x_pos_filtered, alpha_change_filtered, color=colors_alpha, alpha=0.8, edgecolor='black', linewidth=0.5)
     
-    # -------------------------------------------------------------------------
-    # 4. Alpha Power Changes (excluding lesioned areas)
-    # -------------------------------------------------------------------------
-    fig4, ax4 = plt.subplots(figsize=(12, 6))
-    colors = ['purple'] * Nareas_filtered
-    ax4.bar(x_pos_filtered, alpha_change_filtered, color=colors, alpha=0.8, edgecolor='black', linewidth=0.5)
-    
-    # Add percentage labels on top of bars
     for i, val in enumerate(alpha_change_filtered):
         if val >= 0:
             va = 'bottom'
@@ -875,19 +865,19 @@ def lesion_plt(rate_results, power_results, full_area_names, lesion_names, lesio
     ax4.axhline(0, color='black', linestyle='-', linewidth=1)
     ax4.set_xticks(x_pos_filtered)
     ax4.set_xticklabels(area_names_filtered, rotation=45, ha='right', fontsize=10)
-    ax4.set_ylabel('Alpha Power Change (%)', fontsize=12)
     ax4.set_xlabel('Brain Area', fontsize=12)
-    ax4.set_title(f'Alpha Band Power Changes (4-18 Hz){subset_label}\n({lesion_title})', fontsize=14, fontweight='bold')
+    ax4.set_title(f'Alpha Band (4-18 Hz){subset_label}', fontsize=13, fontweight='bold')
     ax4.set_xlim(-0.5, Nareas_filtered - 0.5)
-    # Expand y-axis to fit labels
     ymin, ymax = ax4.get_ylim()
     ax4.set_ylim(ymin - abs(ymin)*0.15, ymax + abs(ymax)*0.15)
-    plt.tight_layout()
     
-    save_path = os.path.join(output_dir, 'lesion_4_alpha_power.png')
+    fig3.suptitle(f'Gamma and Alpha Band Power Changes\n({lesion_title})', fontsize=14, fontweight='bold')
+    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+    
+    save_path = os.path.join(output_dir, 'lesion_3_4_gamma_alpha_power.png')
     plt.savefig(save_path, dpi=200, bbox_inches='tight')
     print(f'    Saved: {save_path}')
-    plt.close(fig4)
+    plt.close(fig3)
     
     # -------------------------------------------------------------------------
     # 5. Distance-Dependent Effects (excluding lesioned areas)
