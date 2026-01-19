@@ -1,8 +1,93 @@
+import os
 import numpy as np
+from numpy.random import normal
 from scipy.stats import ttest_ind
 import matplotlib.pylab as plt
 
+from calculate_rate import calculate_rate
 from helper_functions import calculate_periodogram, find_peak_frequency, matlab_smooth, plt_filled_std
+
+
+def build_interareal_W(Nareas):
+    # Interareal connectivity matrix
+    # areas: 0 = V1, 1 = V4
+    # pops:  0 = L2E, 1 = L2I, 2 = L5E, 3 = L5I
+
+    J_FF1 = 1.0
+    J_FB1 = 0.1
+    J_FB2 = 0.5
+    J_FB3 = 0.9
+    J_FB4 = 0.5
+
+    W = np.zeros((Nareas, Nareas, 4, 4))
+
+    # Feedforward: V1 (area 0) → V4 (area 1)
+    # from V1 L2/3E to V4 L2/3E
+    W[1, 0, 0, 0] = J_FF1
+
+    # Feedback: V4 (area 1) → V1 (area 0)
+    # from V4 L5/6E to V1 L2/3E
+    W[0, 1, 0, 2] = J_FB1   # V4 L5/6E → V1 L2/3E
+    W[0, 1, 1, 2] = J_FB2   # V4 L5/6E → V1 L2/3I
+    W[0, 1, 2, 2] = J_FB3   # V4 L5/6E → V1 L5/6E
+    W[0, 1, 3, 2] = J_FB4   # V4 L5/6I → V1 L5/6E
+
+    return W
+
+
+def interareal_simulation(
+    t, dt, tstop,
+    J, W, tau,
+    Iext, Ibgk, sig,
+    sigmaoverride,
+    nstats=10,
+    stim_area=None,
+    stim_intensity=None):
+    """
+    Simulates interareal dynamics for Rest and Stim conditions.
+    Output format is rate[pop, time, area, stat]
+    """
+
+    Nt = len(t)
+    Nareas = 2
+    Npops  = 4
+
+    rate_V_rest = np.zeros((Nareas * Npops, Nt, 1, nstats))
+    rate_V_stim = np.zeros((Nareas * Npops, Nt, 1, nstats))
+
+    for s in range(nstats):
+
+        # --------------------
+        # 1. REST
+        # --------------------
+        rate_rest = calculate_rate(
+            t, dt, tstop, J, tau, sig,
+            Iext, Ibgk, sigmaoverride,
+            Nareas, W=W)
+
+        for area in range(Nareas):
+            for pop in range(Npops):
+                rate_V_rest[area * Npops + pop, :, 0, s] = rate_rest[pop, :, area]
+
+        # --------------------
+        # 2. STIM
+        # --------------------
+        Iext_stim = Iext.copy()
+        if stim_area == "V1":
+            Iext_stim[0] += stim_intensity # L2/3E in V1
+        elif stim_area == "V4":
+            Iext_stim[2] += stim_intensity # L5/6E in V4
+
+        rate_stim = calculate_rate(
+            t, dt, tstop, J, tau, sig,
+            Iext_stim, Ibgk, sigmaoverride,
+            Nareas, W=W)
+
+        for area in range(Nareas):
+            for pop in range(Npops):
+                rate_V_stim[area * Npops + pop, :, 0, s] = rate_stim[pop, :, area]
+
+    return rate_V_rest, rate_V_stim
 
 
 def trialstat(rate, transient, dt, minfreq_l23, minfreq_l56, nareas, stats):
@@ -37,8 +122,8 @@ def trialstat(rate, transient, dt, minfreq_l23, minfreq_l56, nareas, stats):
         k = 0
         for area in range(nareas):
             # Calculate power spectrum for the excitatory population from layer L23
+            # rate shape: (Npops, Nt, Nareas, nstats) where pop 0 = L2E, pop 2 = L5E
             pxx2, fxx2 = calculate_periodogram(rate[area * 4, :, 0, stat], transient, dt)
-
             # concatenate the results
             px2[:, area, stat] = pxx2
             fx2[:, area, stat] = fxx2
@@ -108,7 +193,7 @@ def interareal_analysis(rate_rest, rate_stim, transient, dt, minfreq_l23, minfre
     return px20, px2, px50, px5, fx2, pgamma, palpha
 
 
-def plot_powerspectrum(recording_area, layer, px0, px, fx2, lcolours, stimulated_area, nstats):
+def plot_powerspectrum(recording_area, layer, px0, px, fx2, lcolours, stimulated_area, nstats, output_dir='interareal'):
     '''
     Plot power spectrum for the rest and stimulated layers for the areas under analysis
 
@@ -194,12 +279,14 @@ def plot_powerspectrum(recording_area, layer, px0, px, fx2, lcolours, stimulated
     plt.xlabel('Frequency(Hz)')
     plt.ylabel('%s %s Power' %(recording_area, layer))
     plt.legend()
-    plt.savefig('interareal/%s_layer_%s_%s.png' %(stimulated_area, recording_area, layer))
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir, exist_ok=True)
+    plt.savefig(os.path.join(output_dir, '%s_layer_%s_%s.png' %(stimulated_area, recording_area, layer)))
 
     return barrasfrequency
 
 
-def interareal_plt(areas, px20, px2, px50, px5, fx2, stimulated_area, nstats):
+def interareal_plt(areas, px20, px2, px50, px5, fx2, stimulated_area, nstats, output_dir='interareal'):
     '''
     Plot Powerspectrum and peak value of the power for the the passed areas of interest
 
@@ -226,8 +313,8 @@ def interareal_plt(areas, px20, px2, px50, px5, fx2, stimulated_area, nstats):
     lcolours = ['#1F5E43', '#31C522', '#944610', '#E67E22']
 
     # Plot power spectrum for the L23 and L5/6 Layers
-    barrasgamma = plot_powerspectrum(recording_area, 'l23', px20, px2, fx2, lcolours[:2], stimulated_area, nstats)
-    barrasalpha = plot_powerspectrum(recording_area, 'l56', px50, px5, fx2, lcolours[-2:], stimulated_area, nstats)
+    barrasgamma = plot_powerspectrum(recording_area, 'l23', px20, px2, fx2, lcolours[:2], stimulated_area, nstats, output_dir)
+    barrasalpha = plot_powerspectrum(recording_area, 'l56', px50, px5, fx2, lcolours[-2:], stimulated_area, nstats, output_dir)
 
     # Plot the peak value of the power spectraum at the supergranular layer for both areas
     if stimulated_area == 'stimulate_V4':
@@ -237,14 +324,17 @@ def interareal_plt(areas, px20, px2, px50, px5, fx2, stimulated_area, nstats):
         yaxis_gamma = [0, .007]
         yaxis_alpha = [0, .04]
 
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir, exist_ok=True)
+    
     plt.figure()
     plt.bar(['Rest', 'Stim'], barrasgamma[:, 0], color=lcolours[:2], yerr=barrasgamma[:, 1])
     plt.ylim(yaxis_gamma)
     plt.ylabel(r'$\gamma$ power')
-    plt.savefig('interareal/%s_layer_gamma.png' % (stimulated_area))
+    plt.savefig(os.path.join(output_dir, '%s_layer_gamma.png' % (stimulated_area)))
 
     plt.figure()
     plt.bar(['Rest', 'Stim'], barrasalpha[:, 0], color=lcolours[-2:], yerr=barrasalpha[:, 1])
     plt.ylabel(r'$\alpha$ power')
     plt.ylim(yaxis_alpha)
-    plt.savefig('interareal/%s_layer_alpha.png' % (stimulated_area))
+    plt.savefig(os.path.join(output_dir, '%s_layer_alpha.png' % (stimulated_area)))

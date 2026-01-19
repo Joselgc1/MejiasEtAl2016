@@ -6,8 +6,138 @@ import math
 
 from calculate_rate import calculate_rate
 
+def get_network_configuration(
+    analysis_type, 
+    noconns=False):
 
-def debug_firing_rate(analysis, t, dt, tstop, J, tau, sig, Iexts, Ibgk, nruns, sigmaoverride, Nareas, noconns, initialrate):
+    # Paper defined connectivity
+    # These are the four classic Wilson–Cowan weights. 
+    # These create the E–I loop, which produces oscillations.
+    JEE = 1.5 # E excites E
+    JEI = -3.25 # E excites I
+    JIE = 3.5 # I excites E
+    JII = -2.5 # I inhibits I
+
+    # Connection between layers
+    if noconns:
+        wee = 0.0; wei = 0.0
+        wie = 0.0; wii = 0.0
+
+    else:
+        wee = JEE; wei = JIE
+        wie = JEI; wii = JII
+
+    # Specify membrane time constants
+    tau_2e = 0.006 # layer 2 excitatory = fast
+    tau_2i = 0.015 # layer 2 inhibitory = fast
+    tau_5e = 0.030 # layer 5 excitatory = slow
+    tau_5i = 0.075 # layer 5 inhibitory = slow
+    tau = np.array([tau_2e, tau_2i, tau_5e, tau_5i])
+
+    # sigma = noise standard deviation parameter for the Wilson–Cowan equation
+    # Higher noise in deep layers = easier to push into alpha rhythm.
+    sig_2e = .3; sig_2i = .3 # low noise
+    sig_5e = .45; sig_5i = .45 # high noise
+    sig = np.array([sig_2e, sig_2i, sig_5e, sig_5i])
+
+    if analysis_type == 'intralaminar':
+        # Input intensities (contrast levels)
+        # These represent:
+        # 0 = no stimulus
+        # 2 = low contrast
+        # 4 = medium contrast
+        # 6 = high contrast
+        
+        # define intralaminar synaptic coupling strenghts
+        J_2e = 0; J_2i = 0
+        J_5e = 0; J_5i = 0
+
+        Imin = 0; Istep = 2; Imax = 20
+        # Note: the range function does not include the end
+        Iexts = range(Imin, Imax + Istep, Istep)
+
+    elif analysis_type in ['interlaminar_a', 'interlaminar_c']:
+        # define interlaminar synaptic coupling strengths
+        J_2e = 1; J_2i = 0
+        J_5e = 0; J_5i = 0.75
+
+        Iexts = np.array([8, 0, 8, 0])
+
+    elif analysis_type == 'interlaminar_u':
+        # Specifiy model where there is no interlaminar connection
+        J_2e = 0; J_2i = 0
+        J_5e = 0; J_5i = 0
+
+        Iexts = np.array([8, 0, 8, 0])
+
+    elif analysis_type == 'interlaminar_b':
+        # define interlaminar synaptic coupling strengths
+        J_2e = 1; J_2i = 0
+        J_5e = 0; J_5i = 0.75
+
+        Iexts = np.array([6, 0, 8, 0])
+
+    elif analysis_type == 'debug_intralaminar':
+        Iexts = [0]
+        J_2e = 0; J_2i = 0
+        J_5e = 0; J_5i = 0
+
+    elif analysis_type == 'debug_interlaminar':
+        Iexts = [0]
+        J_2e = 0; J_2i = 0
+        J_5e = 0; J_5i = 0
+
+    elif analysis_type == 'interareal':
+        # define interlaminar synaptic coupling strengths
+        J_2e = 1; J_2i = 0
+        J_5e = 0; J_5i = 0.75
+
+        Iexts = np.array([0, 0, 0, 0])
+
+    elif analysis_type == 'largescale':
+        # define interareal synaptic coupling strengths
+        J_2e = 1; J_2i = 0
+        J_5e = 0; J_5i = 0.75
+
+        Iexts = np.array([8, 0, 8, 0])
+
+    else:
+        raise Exception('This type of analysis is not implemented')
+    
+    # Connectivity matrix
+    # | Row | Col | Means                              |
+    # | --- | --- | ---------------------------------- |
+    # | 0   | 0   | L23 excitatory receives from L23 E |
+    # | 0   | 1   | L23 excitatory receives from L23 I |
+    # | 2   | 2   | L5 excitatory receives from L5 E   |
+    # | 2   | 3   | L5 excitatory receives from L5 I   |
+    # The zeros indicate no interlaminar connections because this is intralaminar only.
+
+    J = np.array([[wee, wie, J_5e,   0],
+                  [wei, wii, J_5i,   0],
+                  [J_2e, 0,   wee, wie],
+                  [J_2i, 0,   wei, wii]])
+
+    Ibgk = np.zeros((J.shape[0]))
+
+    return tau, sig, J, Iexts, Ibgk
+
+def debug_firing_rate(
+    analysis, 
+    t, 
+    dt, 
+    tstop, 
+    J, 
+    tau, 
+    sig, 
+    Iexts, 
+    Ibgk, 
+    nruns, 
+    sigmaoverride, 
+    Nareas, 
+    noconns, 
+    initialrate):
+
     # calculate the firing rate
     for i in Iexts:
         # inject current only on excitatory layer
@@ -51,89 +181,6 @@ def debug_firing_rate(analysis, t, dt, tstop, J, tau, sig, Iexts, Ibgk, nruns, s
 
         print('Saved debug info to %s.txt!'%filename )
 
-def get_network_configuration(analysis_type, noconns=False):
-
-    # Paper defined connectivity
-    JEE = 1.5; JEI = -3.25;
-    JIE = 3.5; JII = -2.5
-
-    # Connection between layers
-    if noconns:
-        wee = 0.0; wei = 0.0
-        wie = 0.0; wii = 0.0
-
-    else:
-        wee = JEE; wei = JIE
-        wie = JEI; wii = JII
-
-    # Specify membrane time constants
-    tau_2e = 0.006; tau_2i = 0.015
-    tau_5e = 0.030; tau_5i = 0.075
-    tau = np.array([tau_2e, tau_2i, tau_5e, tau_5i])
-
-    # sigma
-    sig_2e = .3; sig_2i = .3
-    sig_5e = .45; sig_5i = .45
-    sig = np.array([sig_2e, sig_2i, sig_5e, sig_5i])
-
-    if analysis_type == 'intralaminar':
-        # define intralaminar synaptic coupling strenghts
-        J_2e = 0; J_2i = 0
-        J_5e = 0; J_5i = 0
-
-        Imin = 0; Istep = 2; Imax = 6
-        # Note: the range function does not include the end
-        Iexts = range(Imin, Imax + Istep, Istep)
-
-
-    elif analysis_type == 'interlaminar_a':
-        # define interlaminar synaptic coupling strengths
-        J_2e = 1; J_2i = 0
-        J_5e = 0; J_5i = 0.75
-
-        Iexts = np.array([8, 0, 8, 0])
-
-    elif analysis_type == 'interlaminar_u':
-        # Specifiy model where there is no interlaminar connection
-        J_2e = 0; J_2i = 0
-        J_5e = 0; J_5i = 0
-
-        Iexts = np.array([8, 0, 8, 0])
-
-    elif analysis_type == 'interlaminar_b':
-        # define interlaminar synaptic coupling strengths
-        J_2e = 1; J_2i = 0
-        J_5e = 0; J_5i = 0.75
-
-        Iexts = np.array([6, 0, 8, 0])
-
-    elif analysis_type == 'debug_intralaminar':
-        Iexts = [0]
-        J_2e = 0; J_2i = 0
-        J_5e = 0; J_5i = 0
-
-    elif analysis_type == 'debug_interlaminar':
-        Iexts = [0]
-        J_2e = 0; J_2i = 0
-        J_5e = 0; J_5i = 0
-
-    elif analysis_type == 'interareal':
-        # define interlaminar synaptic coupling strenghts
-        J_2e = 1; J_2i = 0
-        J_5e = 0; J_5i = 0.75
-
-    else:
-        raise Exception('This type of analysis is not implemented')
-    J = np.array([[wee, wie, J_5e,   0],
-                  [wei, wii, J_5i,   0],
-                  [J_2e, 0,   wee, wie],
-                  [J_2i, 0,   wei, wii]])
-
-
-    Ibgk = np.zeros((J.shape[0]))
-    return tau, sig, J, Iexts, Ibgk
-
-
 def calculate_periodogram(re, transient, dt):
     """
     Does necessary preprocessing to the data and calculates periodogram
@@ -148,25 +195,37 @@ def calculate_periodogram(re, transient, dt):
     """
     # calculate fft and sampling frequency for the peridogram
     fs = 1 / dt
-    N = re.shape[0]
-    win = signal.get_window('boxcar', N)
+    
+    if transient > 0:
+        discard = int(round((transient + dt)/dt)) - 1
+        restate = re[discard:]
+    else:
+        discard = 0
+        restate = re
+
+    N = restate.shape[0]
+
     # Calculate fft (number of freq. points at which the psd is estimated)
-    # Calculate the max power of 2 and find the maximum value
     pow2 = int(round(math.log(N, 2)))
     fft = max(256, 2 ** pow2)
 
-    # discard the first points
-    restate = re[int(round((transient + dt)/dt)) - 1:]
-
     # perform periodogram on restate
-    fxx, pxx = signal.periodogram(restate, fs=fs, window=win[int(round((transient + dt)/dt)) - 1:],
-                                    nfft=fft, detrend=False, return_onesided=True,
-                                    scaling='density')
-    # print('Done calculating Periodogram!')
+    fxx, pxx = signal.periodogram(
+        restate, 
+        fs=fs, 
+        window='boxcar',
+        nfft=fft, 
+        detrend=False, 
+        return_onesided=True,
+        scaling='density'
+    )
     return pxx, fxx
 
-
-def find_peak_frequency(fxx, pxx, min_freq, restate):
+def find_peak_frequency(
+    fxx, 
+    pxx, 
+    min_freq, 
+    restate):
     # find the frequency of the oscillations
     z = np.where(fxx > min_freq)
     pxx_freq = pxx[z]
@@ -194,8 +253,13 @@ def find_peak_frequency(fxx, pxx, min_freq, restate):
     amplitudeC = np.max(restate) - np.min(restate)
     return frequency, amplitudeA, amplitudeB, amplitudeC
 
-
-def plt_filled_std(ax, fxx_plt, data_mean, data_std, color, label):
+def plt_filled_std(
+    ax, 
+    fxx_plt, 
+    data_mean, 
+    data_std, 
+    color, 
+    label):
     # calculate upper and lower bounds of the plot
     cis = (data_mean - data_std, data_mean + data_std)
     # plot filled area
@@ -204,8 +268,9 @@ def plt_filled_std(ax, fxx_plt, data_mean, data_std, color, label):
     ax.plot(fxx_plt, data_mean, color=color, linewidth=2, label=label)
     ax.margins(x=0)
 
-
-def matlab_smooth(data, window_size):
+def matlab_smooth(
+    data, 
+    window_size):
     # assumes the data is one dimensional
     n = data.shape[0]
     c = signal.lfilter(np.ones(window_size)/window_size, 1, data)
@@ -221,8 +286,10 @@ def matlab_smooth(data, window_size):
     c = np.concatenate([cbegin, c[window_size-1:], cend])
     return c
 
-
-def compress_data(pxx, fxx, bin):
+def compress_data(
+    pxx, 
+    fxx, 
+    bin):
     """
     Compress data, using a sliding window approach
     Input:
@@ -243,11 +310,12 @@ def compress_data(pxx, fxx, bin):
     fxx_bin = np.asarray([np.mean(fxx2[i:i + bin]) for i in range(0, len(fxx2), bin)])
     return pxx_bin, fxx_bin
 
-def firing_rate_analysis(noconns=False,
-                         testduration=1000, # ms
-                         sigmaoverride=None,
-                         initialrate=5,
-                         dt=2e-4):
+def firing_rate_analysis(
+    noconns=False,
+    testduration=1000, # ms
+    sigmaoverride=None,
+    initialrate=5,
+    dt=2e-4):
                          
     ########################################################################################################################
     #                                                      Intralaminar
@@ -305,4 +373,3 @@ def firing_rate_analysis(noconns=False,
     ########################################################################################################################
     #                                                      Interareal
     ########################################################################################################################
-
