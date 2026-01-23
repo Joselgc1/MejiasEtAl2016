@@ -1,10 +1,10 @@
 # Mejias et al. 2016 - Large-Scale Cortical Network Simulation
 
-Overview of the main results of the simulation in Python. The methods used to analyse the simulation will be adapted to also analyse the results of the NeuroML2 simulation.
+Overview of the main results of the simulation in Python. This implementation includes the full largescale connection model as well as adding lesions analysis.
 
 ## Data Organization
 
-All simulation results and plots are now saved in the `data/` folder, organized by analysis type:
+All simulation results and plots are saved in the `data/` folder, organized by analysis type:
 
 ```
 data/
@@ -19,9 +19,7 @@ data/
 
 ## Intralaminar Analysis
 
-This model considers the simulation of excitatory and inhibitory neurons of supra- and infragranular layers. Note that the excitatory and inhibitory populations of both layers are not connected. The parameters of the model were adjusted so that the layer 2/3 oscillates within the gamma (~40 Hz) and layer 5/6 falls within the alpha/low-beta range (~10-30 Hz).
-
-As in the original paper, we tested the effect on the gamma frequency on layer 2/3 of increasing the stimulus on the simulation. Higher input values lead to stronger gamma rhythms in the excitatory firing rate power spectrum. Note that, to obtain this power spectrum the authors subtracted the case with no input to the case with different inputs.
+This model considers the simulation of excitatory and inhibitory neurons of supra- and infragranular layers.
 
 **Run the analysis:**
 ```bash
@@ -35,7 +33,7 @@ python main.py -analysis intralaminar
 
 ## Interlaminar Analysis
 
-Here we consider connections between the L2/3 and L5/6 layer. As described in the original paper, when the interlaminar coupling is present (green and orange lines below) the oscillatory dynamics spread across the layers. This is clearly visible in the plot below, where the power spectrum of Layer 2/3 shows a strong alpha component only when both layers are coupled.
+Here we consider connections between the L2/3 and L5/6 layer.
 
 ### Interlaminar A - Power Spectrum Comparison
 
@@ -52,7 +50,7 @@ python main.py -analysis interlaminar_a
 
 ### Interlaminar B - Activity Traces
 
-To further analyse the dynamic interaction between the two layers the authors analysed the LFP (Local Field Potential) from the layer 5/6 with respect to the alpha rhythm from Layer 2/3.
+To analyse the dynamic interaction between the two layers, this analyses the LFP (Local Field Potential) from the layer 5/6 with respect to the alpha rhythm from Layer 2/3.
 
 **Run the analysis:**
 ```bash
@@ -64,6 +62,8 @@ python main.py -analysis interlaminar_b
 - `activity_traces.png` - L5/6 activity traces aligned to alpha peaks
 
 ### Interlaminar C - Input Sweep Analysis
+
+Recreates figure 3C from the original paper.
 
 **Run the analysis:**
 ```bash
